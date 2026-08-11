@@ -1,0 +1,23 @@
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+# meson / ninja build trees
+builddir/
+_build/
+.mesonpy-*/
+
+# fortran build artifacts
+*.o
+*.mod
+*.so
+*.so.*
+
+# viewer outputs
+*.png
+convview
+convdump

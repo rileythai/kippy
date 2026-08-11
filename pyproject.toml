@@ -1,0 +1,19 @@
+[project]
+name = "kippy"
+version = "0.1.0"
+description = "A native Fortran/giza Kippenhahn viewer for KEPLER .cnv output"
+readme = "README.md"
+authors = [
+    { name = "Riley Thai", email = "riley.thai@monash.edu" },
+    { name = "Alexander Heger", email = "alexander.heger@monash.edu" },
+]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+convview = "kippy._cli:convview"
+convdump = "kippy._cli:convdump"
+
+[build-system]
+requires = ["meson-python>=0.15.0", "meson>=1.1.0", "ninja"]
+build-backend = "mesonpy"
