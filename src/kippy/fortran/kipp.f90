@@ -1,7 +1,7 @@
 ! kipp.f90 -- Kippenhahn rendering library on top of giza.
 !
-! Reads KEPLER .cnv convection data (via the keppy Fortran reader in
-! ../data) and renders a Kippenhahn diagram
+! Reads KEPLER .cnv convection data (via the vendored Fortran reader
+! typedef/convdata/convload) and renders a Kippenhahn diagram
 module kipp
 
    use typedef, only: int32, real64

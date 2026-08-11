@@ -11,7 +11,7 @@ import os
 import subprocess
 from pathlib import Path
 
-__all__ = ["view", "dump", "executable", "bin_dir"]
+__all__ = ["view", "dump", "executable", "bin_dir", "child_env"]
 
 __version__ = "0.1.0"
 
@@ -30,6 +30,19 @@ def executable(name: str) -> Path:
             "the native build may have failed or not run"
         )
     return exe
+
+
+def child_env() -> dict:
+    """environment for launching the executables
+
+    the bundled libgiza sits in bin_dir; prepend it to LD_LIBRARY_PATH so the
+    loader finds it regardless of how the binary's rpath was packaged.
+    """
+    env = os.environ.copy()
+    libdir = str(bin_dir())
+    prev = env.get("LD_LIBRARY_PATH")
+    env["LD_LIBRARY_PATH"] = libdir if not prev else libdir + os.pathsep + prev
+    return env
 
 
 def view(
@@ -52,10 +65,10 @@ def view(
         argv.append(str(cnvfile))
 
     if commands is None:
-        return subprocess.run(argv, check=check)
+        return subprocess.run(argv, env=child_env(), check=check)
 
     stdin = "".join(line + "\n" for line in commands)
-    return subprocess.run(argv, input=stdin, text=True, check=check)
+    return subprocess.run(argv, input=stdin, text=True, env=child_env(), check=check)
 
 
 def dump(
@@ -71,5 +84,5 @@ def dump(
     argv = [str(executable("convdump"))]
     if cnvfile is not None:
         argv.append(str(cnvfile))
-    proc = subprocess.run(argv, capture_output=True, text=True, check=check)
+    proc = subprocess.run(argv, capture_output=True, text=True, env=child_env(), check=check)
     return proc.stdout

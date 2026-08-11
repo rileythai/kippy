@@ -9,11 +9,11 @@ from __future__ import annotations
 import subprocess
 import sys
 
-from . import executable
+from . import child_env, executable
 
 
 def _forward(name: str) -> int:
-    proc = subprocess.run([str(executable(name)), *sys.argv[1:]])
+    proc = subprocess.run([str(executable(name)), *sys.argv[1:]], env=child_env())
     return proc.returncode
 
 

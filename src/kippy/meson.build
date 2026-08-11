@@ -15,8 +15,10 @@ giza = custom_target(
   build_by_default: true,
   console: true,
   install: true,
-  # ship only the shared library and its symlinks; skip the mod and object
-  install_dir: [bindir, bindir, bindir, false, false],
+  # ship only the soname the executables load (libgiza.so.2); the linker-name
+  # symlink and the real name are only needed in the build tree at link time,
+  # and the wheel would materialise each symlink as a full copy otherwise
+  install_dir: [false, bindir, false, false, false],
 )
 
 giza_mod = giza[3]
