@@ -7,6 +7,7 @@ bundled executables (``convview``, ``convdump``) as subprocesses; see
 
 from __future__ import annotations
 
+import importlib.resources
 import os
 import subprocess
 from pathlib import Path
@@ -16,14 +17,25 @@ __all__ = ["view", "dump", "executable", "bin_dir", "child_env"]
 __version__ = "0.1.0"
 
 
+def _bundled(name: str) -> Path:
+    """real filesystem path of a file shipped under kippy/bin
+
+    resolved via importlib.resources rather than __file__ so it works both
+    for a regular wheel install (kippy/bin sits beside __init__.py) and for
+    an editable meson-python install (the binaries are served from the meson
+    build tree, not the source dir that holds __init__.py)
+    """
+    return Path(str(importlib.resources.files("kippy") / "bin" / name))
+
+
 def bin_dir() -> Path:
     """directory holding the bundled executables and libgiza"""
-    return Path(__file__).resolve().parent / "bin"
+    return _bundled("convview").parent
 
 
 def executable(name: str) -> Path:
     """resolve a bundled executable by name, raising if it is not present"""
-    exe = bin_dir() / name
+    exe = _bundled(name)
     if not exe.exists():
         raise FileNotFoundError(
             f"kippy executable {name!r} not found at {exe}; "

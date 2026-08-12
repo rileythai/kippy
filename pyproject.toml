@@ -17,3 +17,13 @@ convdump = "kippy._cli:convdump"
 [build-system]
 requires = ["meson-python>=0.15.0", "meson>=1.1.0", "ninja"]
 build-backend = "mesonpy"
+
+[dependency-groups]
+# build backend tools kept in the project venv so the meson-python editable
+# rebuild hook resolves a persistent ninja instead of a torn-down uv build env
+dev = ["meson-python>=0.15.0", "meson>=1.1.0", "ninja"]
+
+[tool.uv]
+# build kippy against the venv tools above rather than an ephemeral isolated
+# env, otherwise the baked-in ninja path vanishes after install
+no-build-isolation-package = ["kippy"]
