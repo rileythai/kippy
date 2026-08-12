@@ -6,7 +6,7 @@ module kipp
 
    use typedef, only: int32, real64
    use convdata, only: data
-   use convload, only: loadconv
+   use mesaload, only: load_convection
    use giza
 
    implicit none
@@ -133,7 +133,7 @@ contains
    !---------------------------------------------------------------------
    subroutine kipp_load(filename)
       character(len=*), intent(in) :: filename
-      call loadconv(filename, 1_int32, huge(1_int32))
+      call load_convection(filename, 1_int32, huge(1_int32))
       nmodels = int(size(data), int32)
       if (nmodels < 2) error stop '[kipp] need at least 2 models'
       call cache_invalidate()

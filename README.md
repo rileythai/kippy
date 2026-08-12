@@ -60,3 +60,23 @@ kippy.view("model.cnv", commands=["save kipp.png", "quit"])
 # or launch the interactive REPL
 kippy.view("model.cnv")
 ```
+
+## MESA profiles
+
+Besides KEPLER `.cnv` files, every entry point also accepts a MESA profiles
+directory -- any directory containing a `profiles.index` alongside its
+`profileN.data` files. The reader is chosen automatically from the path, so a
+directory works anywhere a `.cnv` file did:
+
+```bash
+convview path/to/LOGS      # interactive viewer over the MESA run
+convdump path/to/LOGS      # print reader summary
+```
+
+```python
+kippy.view("path/to/LOGS", commands=["save kipp.png", "quit"])
+```
+
+MESA saves profiles sparsely in time (not every step); the band tracer bridges
+them into continuous polygons. Convection zones come from the `mixing_type`
+column and the `color epsnuc` overlay from `eps_nuc`.

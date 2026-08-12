@@ -8,7 +8,7 @@ program convdump
 
    use typedef, only: int32
    use convdata, only: data
-   use convload, only: loadconv
+   use mesaload, only: load_convection
    implicit none
 
    character(len=256) :: fname
@@ -20,7 +20,7 @@ program convdump
       fname = 'convdata.cnv'
    end if
 
-   call loadconv(trim(fname), 1_int32, huge(1_int32))
+   call load_convection(trim(fname), 1_int32, huge(1_int32))
    n = int(size(data), int32)
    print '(a,i0)', 'nmodels ', n
    call show(1_int32)
