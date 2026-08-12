@@ -2,9 +2,14 @@
 """build the vendored giza submodule and stage its artifacts for meson
 
 giza uses an autotools build, so meson drives it through this helper as a
-custom target. we configure (once) and make giza in-source, then copy the
-shared library, the fortran module, and the fortran interface object into
-the meson output dir so the kippy executables can compile and link.
+custom target. we run an out-of-source (VPATH) build inside the meson output
+dir and copy the shared library, the fortran module, and the fortran interface
+object out for the kippy executables to compile and link against.
+
+the build is kept out-of-source on purpose: an in-source build writes
+config.status, Makefiles, and object files into the giza submodule, dirtying
+the source tree on every install. building under out_dir keeps the checkout
+pristine and confines all artifacts to the meson build directory.
 
 usage: build_giza.py <giza_source_dir> <out_dir>
 """
@@ -32,18 +37,24 @@ def main():
     out = Path(sys.argv[2]).resolve()
     out.mkdir(parents=True, exist_ok=True)
 
-    src = giza / "src"
+    # out-of-source build tree; giza's autotools drops libtool artifacts under
+    # src/ and src/.libs relative to this dir
+    builddir = out / "giza-build"
+    builddir.mkdir(parents=True, exist_ok=True)
+    src = builddir / "src"
     libs = src / ".libs"
 
     if not (giza / "configure").exists():
-        # a bare checkout without generated configure needs autoreconf first
+        # a bare checkout without generated configure needs autoreconf first.
+        # this writes into the source tree, but giza ships configure so it is
+        # only hit on a stripped checkout
         run(["autoreconf", "--install"], giza)
 
-    # configure once, keyed on config.status so rebuilds are cheap
-    if not (giza / "config.status").exists():
-        run(["./configure"], giza)
+    # configure once, keyed on config.status so incremental rebuilds are cheap
+    if not (builddir / "config.status").exists():
+        run([str(giza / "configure")], builddir)
 
-    run(["make", f"-j{os.cpu_count() or 1}"], giza)
+    run(["make", f"-j{os.cpu_count() or 1}"], builddir)
 
     # stage the real shared object, recreate its symlink chain locally
     shutil.copy2(libs / LIB_REAL, out / LIB_REAL)
