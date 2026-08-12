@@ -62,6 +62,12 @@ executable(
   link_args: ['-L' + meson.current_build_dir(), '-lgiza', '-lm'],
   link_depends: [giza],
   dependencies: giza_backends,
+  # $ORIGIN so the installed binary finds the sibling libgiza in kippy/bin.
+  # build_rpath bakes the same entry into the build-tree binary. meson-python
+  # packages the wheel from the build tree and skips meson's install-time rpath
+  # rewrite, so without build_rpath the binary ships meson's XXXXXXX placeholder
+  # and cannot load libgiza at runtime
+  build_rpath: '$ORIGIN',
   install_rpath: '$ORIGIN',
   install: true,
   install_dir: bindir,
