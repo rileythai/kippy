@@ -30,7 +30,7 @@ fflags = ['-ffree-line-length-none', '-I' + meson.current_build_dir()]
 # --- vendored keppy .cnv reader ---
 reader_lib = static_library(
   'kipp_reader',
-  files('fortran/typedef.f90', 'fortran/convdata.f90', 'fortran/convload.f90'),
+  files('fortran/typedef.f90', 'fortran/convdata.f90', 'fortran/convload.f90', 'fortran/mesaload.f90'),
   fortran_args: fflags,
   install: false,
 )
