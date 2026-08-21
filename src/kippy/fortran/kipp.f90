@@ -1,6 +1,6 @@
-! kipp.f90 -- Kippenhahn rendering library on top of giza.
+! kipp.f90 -- Kippenhahn rendering library on top of giza
 !
-! Reads KEPLER .cnv convection data (via the vendored Fortran reader
+! Designed to read KEPLER .cnv convection data (via the vendored Fortran reader
 ! typedef/convdata/convload) and renders a Kippenhahn diagram
 module kipp
 
@@ -37,7 +37,7 @@ module kipp
       real(real64)      :: xmin = 0, xmax = 0, ymin = 0, ymax = 0
       logical           :: xauto = .true., yauto = .true.
       character(len=12) :: cfield = 'epsnuc'   ! 'convtype' | 'epsnuc' | 'enuc' | 'neu'
-      character(len=64) :: device = '/xw'
+      character(len=64) :: device = '/xw'      ! ?
       character(len=64) :: prefix = 'convview'
       logical           :: interactive = .true.
       integer           :: devid = -1
@@ -46,7 +46,7 @@ module kipp
    type(kstate_t) :: st
 
    ! characters that are delivered by the giza /xw driver for mouse events
-   ! (giza-shared.h: LEFT/MIDDLE/RIGHT click, scroll wheel, Esc)
+   ! (see giza-shared.h: LEFT/MIDDLE/RIGHT click, scroll wheel, Esc)
    character(len=1), parameter :: K_LCLICK = 'A'
    character(len=1), parameter :: K_MCLICK = 'D'
    character(len=1), parameter :: K_RCLICK = 'X'
@@ -63,10 +63,14 @@ module kipp
    real(real64), allocatable :: xedge(:)   ! model strip edges (nmodels+1)
    real(real64), allocatable :: ystar(:)   ! outer mass/radius per model (cgs)
 
-   ! Greedy band tracer: turns the per-model (ylo,yhi) intervals of one
+   ! i think this is really sick so read below
+
+   ! Greedy band tracer datatype
+   !
+   ! Turns per-model (ylo,yhi) intervals of one
    ! "feature" (a convection type, or one energy contour level) into a small
-   ! number of bands spanning contiguous runs of models, instead of a
-   ! rectangle per model.  Closed bands are stored into a bandset_t cache.
+   ! number of bands spanning contiguous runs of models.
+   ! Closed bands are stored into a bandset_t cache.
    type :: tracer_t
       integer(int32) :: maxbands = 0
       integer(int32), allocatable :: i0(:), i1(:)     ! first/last model of band
@@ -643,13 +647,10 @@ contains
       ! field is shown (convplot shrinks the axes box the same way)
       layer = layer_of_cfield()
       vx2 = merge(0.89d0, 0.95d0, layer >= 0)
-      ! set the viewport twice: giza_open_device leaves the default-viewport
-      ! clip rectangle as a dangling cairo path (the clip flag is enabled
-      ! only after the default viewport is set), and the first cairo_clip
-      ! after that absorbs the stale path, widening the clip region to the
-      ! whole default viewport -- fills then bleed over the margins.  The
-      ! first call here flushes any stale path; the second sets the real clip.
-      call giza_set_viewport(0.12d0, vx2, 0.12d0, 0.96d0)
+
+      ! there used to be a bug in giza_open_device that didnt let it to respect
+      ! clipping, so you had to call it twice to absorb the default one.
+      ! fixed upstream.
       call giza_set_viewport(0.12d0, vx2, 0.12d0, 0.96d0)
       call giza_set_window(wx1, wx2, wy1, wy2)
       ! erase the full page here, not just at change-page: on /xw a window
@@ -658,13 +659,15 @@ contains
       ! frame composites over undefined pixmap memory (ghost artifacts)
       call giza_draw_background()
 
-      ! Convection zones are ALWAYS drawn (hatched, like convplot's hatch-only
-      ! patches).  When `color` selects a nuclear/neutrino energy field, it is
-      ! drawn first as solid gain (blue) / loss (magenta) bands and the
-      ! convection hatching is overlaid on top so both are visible.
-      if (layer >= 0) call draw_energy(layer)
-      call draw_convection()
-      call draw_surface()
+      ! Convection zones are always drawn (hatched, like convplot's hatch-only
+      ! patches).
+      !
+      ! When `color` selects a nuclear/neutrino energy field, it is
+      ! drawn first as solid gain (blue) / loss (magenta) bands, and the
+      ! convection hatching is overlaid on top.
+      if (layer >= 0) call draw_energy(layer) ! color/energy layer
+      call draw_convection() ! convective hatch
+      call draw_surface() ! surface of star
 
       ! axes on top
       call giza_set_colour_index(1)
@@ -676,6 +679,7 @@ contains
       call labels(xlabel, ylabel)
       call giza_label(trim(xlabel), trim(ylabel), '')
 
+      ! make colorbar + other
       if (layer >= 0) then
          call draw_colorbar(layer)
          ! restore the plot viewport/window so the interactive cursor
@@ -686,8 +690,9 @@ contains
    end subroutine draw_scene
 
    !---------------------------------------------------------------------
-   ! Level colorbar in the right margin, styled after convplot's
-   ! LevelLegend: one column of colored cells with the log10 level value
+   ! draw_colorbar -- colorbar in the right margin
+   !
+   ! one column of colored cells with the log10 level value
    ! inside each (vertical text, white on the deep cells), gain stacked
    ! at the top (deepest blue = strongest gain), loss at the bottom
    ! (deepest magenta), a '...' separator at the zero crossing, and a
@@ -773,11 +778,14 @@ contains
    end function ytrans2
 
    !---------------------------------------------------------------------
-   ! Convection zones, drawn the matplotlib way.  Instead of one filled
-   ! rectangle per (model, zone) -- which is slow and re-starts the hatch on
-   ! every strip -- each contiguous convective region is traced into bands
-   ! whose lower/upper edges follow the zone interfaces across models.  All
-   ! visible bands of a type are filled as ONE keyholed giza_polygon with a
+   ! Convection zones, drawn the Alex Heger way for a lightning fast renderer.
+   !
+   ! Instead of one filled rectangle per (model, zone) -- which is slow
+   ! and re-starts the hatch on every strip -- each contiguous convective
+   ! region is traced into bands whose lower/upper edges follow the zone
+   ! interfaces across models.
+   !
+   ! All visible bands of a type are filled as ONE keyholed giza_polygon with a
    ! per-type hatch (giza_set_fill(3|4)): a single fill means giza computes
    ! the hatch pattern once, so it stays aligned across band seams.  The
    ! boundary is stroked separately from cached outline chains that follow

@@ -1,15 +1,15 @@
-! convview.f90 -- interactive Kippenhahn viewer (command REPL over giza).
+! convview.f90 -- interactive Kippenhahn viewer
 !
 ! Usage:  ./convview [file.cnv]      (default: convdata.cnv)
 !
 ! Reads commands from stdin and re-renders after each.  Works with an
-! interactive /xw window (when $DISPLAY is set) or by writing PNG
+! interactive /xw window (when $DISPLAY is set) or can write PNG
 ! snapshots when headless.
 !
 program convview
 
    use kipp
-   implicit none
+   implicit none (type, external)
 
    character(len=512) :: line
    character(len=64)  :: cmd, a1, a2, a3

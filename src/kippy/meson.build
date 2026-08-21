@@ -27,11 +27,16 @@ giza_fobj = giza[4]
 # giza.mod and the reader mods land here; -I so gfortran finds them
 fflags = ['-ffree-line-length-none', '-I' + meson.current_build_dir()]
 
+# openmp parallelizes the per-profile MESA reader loop (mesaload.f90); the
+# dependency adds the compile and link flags for the active compiler
+omp = dependency('openmp')
+
 # --- vendored keppy .cnv reader ---
 reader_lib = static_library(
   'kipp_reader',
   files('fortran/typedef.f90', 'fortran/convdata.f90', 'fortran/convload.f90', 'fortran/mesaload.f90'),
   fortran_args: fflags,
+  dependencies: omp,
   install: false,
 )
 
@@ -61,7 +66,7 @@ executable(
   link_with: [kipp_lib, reader_lib],
   link_args: ['-L' + meson.current_build_dir(), '-lgiza', '-lm'],
   link_depends: [giza],
-  dependencies: giza_backends,
+  dependencies: [giza_backends, omp],
   # $ORIGIN so the installed binary finds the sibling libgiza in kippy/bin.
   # build_rpath bakes the same entry into the build-tree binary. meson-python
   # packages the wheel from the build tree and skips meson's install-time rpath
@@ -79,6 +84,7 @@ executable(
   files('fortran/convdump.f90'),
   fortran_args: fflags,
   link_with: reader_lib,
+  dependencies: omp,
   install: true,
   install_dir: bindir,
 )
