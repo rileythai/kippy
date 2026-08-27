@@ -25,6 +25,7 @@ a vendored giza submodule; Python drives the executables as subprocesses.
 | 6 | MESA profiles reader (`mesaload.f90`) | done | Claude | `eb3a664` (merged `c0b904a`); auto-detect via `profiles.index`, convection from `mixing_type`, epsnuc from `eps_nuc` |
 | 7 | Publish to PyPI | pending | — | Package name `kippy` v0.1.0; needs a release build + trusted-publish/CI |
 | 8 | Raw `.kipp` binary stream reader (`loadkipp` in `mesaload.f90`) | done | Claude | dispatch on `.kipp` suffix; layout from a sidecar `<file>.hdr` (found next to the file, else basename in cwd); streams the float64 cell dump in chunks (2.7 GB class, ~940 MB RSS, ~5.6 s), groups cells by monotonic `model_number`, reverses surface->center to center->surface, reuses `build_zones`/`build_energy`; single net `eps` column drives the nuc layer, neu layer empty |
+| 9 | Arbitrary column colour fields (`color <column>`) | done | Claude | any non-structural source column is registered as a generic colour field (`convdata` `fieldlayer` + shared `field_names/vmin/vmax/log` registry); values quantized into `FIELD_NBINS=24` contour bins over the min/max across the run (auto log when positive and >2 decades), traced with the existing band tracer, drawn as nested viridis contours with a value-labelled colorbar. `.kipp` reader does two streaming passes (range then quantize) so only compact step functions stay resident; MESA-dir reader registers a curated column set. REPL: `color <column>` + `fields` list. Verified on real `profile.kipp` (T_K log 3.5e3-2.7e8 K, ~27 entries/model) and a synthetic fixture render |
 
 ### Inherited from keppy
 
@@ -62,20 +63,33 @@ Record key decisions here as they are made. Append only — do not delete previo
 | 2026-08-12 | MESA support | .cnv only vs also MESA | Read MESA profile dirs too | Reader chosen automatically from the path; a profiles directory works anywhere a `.cnv` file did |
 | 2026-08-21 | `.kipp` binary input | parse MESA text vs a packed binary stream | Read the raw `.kipp` float64 cell dump | One contiguous binary stream (cells grouped by model, one row per zone) loads far faster than re-parsing ascii profiles; column layout carried in a sidecar `.hdr` so the stream stays self-describing |
 | 2026-08-21 | `.kipp` header lookup | fixed path vs search | `<file>.hdr` next to the data, else `<basename>.hdr` in cwd | Sidecar normally ships beside the data; cwd fallback covers a moved/streamed data file, and cwd is not re-checked when the file already lives there |
+| 2026-08-27 | arbitrary colour columns | reuse signed-log energy levels vs a generic quantized field | Generic field quantized into fixed contour bins over the run min/max | Energy levels are signed log10 decades tuned to eps; a temperature/density column wants a continuous colorbar over its real range. Quantizing to `FIELD_NBINS` bins reuses the fast band tracer and, for the near-monotonic profile fields, compresses to ~bins-per-model entries |
+| 2026-08-27 | `.kipp` field memory | store raw columns then quantize vs two streaming passes | Two streaming passes (range, then quantize) | Storing raw extra columns for a 12 GB file would add several GB of transient RSS; a second disk pass keeps only the compact step functions resident. Grouping is deterministic, so the second pass maps models back to records by stream order (pre-sort) |
 
 ## Session State
 
 _Updated at the end of each session or major phase._
 
-**Last updated**: 2026-08-21
-**Status (2026-08-21)**: Added a raw `.kipp` binary-stream reader (`loadkipp` in
-`mesaload.f90`, task 8). `load_convection` now dispatches on a `.kipp` suffix
-before the MESA-dir / `.cnv` checks; the column layout is read from a sidecar
-`<file>.hdr` (next to the file, else `<basename>.hdr` in cwd). Verified on a
-2.7 GB real file (9565 models, 7084-16648, ~5.6 s, ~940 MB RSS; renders) and on a
-synthetic 3-model fixture (zone compression, coordinate reversal, cwd fallback,
-missing-header error all correct). Working tree still carries pre-existing WIP
-(mesaload reformat + OpenMP per-profile loop in `meson.build`/`convview.f90`/
-`kipp.f90`) intermixed with the new reader; not yet committed. HEAD at `7971707`.
-Next candidate work: commit tasks (WIP + `.kipp` reader), then PyPI release
-(task 7); no open blockers.
+**Last updated**: 2026-08-27
+**Status (2026-08-27)**: Added arbitrary column colour fields (task 9). Any
+non-structural source column is registered as a generic colour field in a shared
+`convdata` registry (`field_names/vmin/vmax/log` + a per-record `fld()` of
+`fieldlayer` step functions). The renderer resolves `color <column>` (with a few
+aliases: `temperature`/`density`/`luminosity`/`pressure`) against it, traces the
+quantized bins with the existing band tracer, and draws nested viridis contours
+plus a value-labelled colorbar reflecting the min/max across the run (auto log
+when positive and spanning >2 decades). The `.kipp` reader streams twice (range
+then quantize) so only compact step functions stay resident; the MESA-dir reader
+registers a curated column set (`logT`/`logRho`/`logL`/`luminosity`/`logP`/
+`pressure`/`opacity`/`entropy`/`velocity`) read alongside the structural columns.
+New REPL commands: `color <column>` and `fields` (lists selectors + ranges).
+
+Verified: real `~/projects/blueloops/.../LOGS_TPAGB/profile.kipp` (12 GB, first
+27 models 7084-7110 via early-stop range) registers `zone/dm_g/T_K/rho_gcc/
+L_erg_s`, `T_K` log 3.5e3-2.7e8 K compressing to ~27 step entries per 3251-zone
+model, `L_erg_s` correctly linear (negative values); synthetic 6-model fixture
+renders temperature/density/aliases, energy path (`epsnuc`) unregressed, axis
+rebuild (radius / model) retraces field bands. Not yet run: full 12 GB render
+(two passes ~2x the ~5.6 s load). Pre-existing WIP (`monload.f90` MONASH stub,
+untracked; OpenMP per-profile loop) still in tree. HEAD at `044e2cb`.
+Next candidate work: PyPI release (task 7); no open blockers.

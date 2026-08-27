@@ -5,7 +5,9 @@
 module kipp
 
    use typedef, only: int32, real64
-   use convdata, only: data
+   use convdata, only: data, fieldlayer, &
+                       FIELD_NBINS, nfields, field_names, &
+                       field_vmin, field_vmax, field_log
    use mesaload, only: load_convection
    use giza
 
@@ -14,7 +16,7 @@ module kipp
 
    public :: kipp_load, kipp_choose_device, kipp_render, kipp_save, &
              kipp_close, kipp_autoscale, kipp_rebuild, kipp_interact, &
-             kipp_action, kipp_window_center, st, nmodels
+             kipp_action, kipp_window_center, kipp_list_fields, st, nmodels
 
    ! physical constants to match keppy.data.physconst.Kepler / YR
    real(real64), parameter :: SOLMASS = 1.9892d33      ! g
@@ -36,7 +38,7 @@ module kipp
       logical           :: ylog = .false.
       real(real64)      :: xmin = 0, xmax = 0, ymin = 0, ymax = 0
       logical           :: xauto = .true., yauto = .true.
-      character(len=12) :: cfield = 'epsnuc'   ! 'convtype' | 'epsnuc' | 'enuc' | 'neu'
+      character(len=32) :: cfield = 'epsnuc'   ! convtype | epsnuc | neu | any field name
       character(len=64) :: device = '/xw'      ! ?
       character(len=64) :: prefix = 'convview'
       logical           :: interactive = .true.
@@ -112,12 +114,22 @@ module kipp
       type(bandset_t), allocatable :: gain(:), loss(:)
    end type ecache_t
 
+   ! per-field band cache: one nested bandset per contour bin (bin 1 covers
+   ! the whole star, higher bins nest inward), filled on first use of a
+   ! `color <field>` selection
+   type :: fcache_t
+      logical :: valid = .false.
+      integer(int32) :: nlev = 0
+      type(bandset_t), allocatable :: band(:)
+   end type fcache_t
+
    ! cached traced bands, invalidated on file load and axis rebuild;
    ! energy bands cached per layer so `color` switches do not retrace
    type(bandset_t) :: conv_bands(5)
    type(chainset_t):: conv_chains(5)   ! exact region outlines per conv type
    logical         :: conv_valid = .false.
    type(ecache_t)  :: ecache(0:2)
+   type(fcache_t), allocatable :: fcache(:)   ! one per registered colour field
 
    real(real64), allocatable :: epx(:), epy(:)   ! polygon emit scratch
 
@@ -618,7 +630,8 @@ contains
       character(len=16) :: xopt, yopt
       character(len=64) :: xlabel, ylabel
       real(real64) :: wx1, wx2, wy1, wy2, vx2
-      integer(int32) :: layer
+      integer(int32) :: layer, fidx
+      logical :: colored
 
       ! define convection colours (match ConvPlot.conv_hatch)
       call giza_set_colour_representation(2, 0.0d0, 0.6d0, 0.0d0)  ! conv  green
@@ -643,10 +656,13 @@ contains
       eylo = wy1 - CLAMP_SPANS*(wy2 - wy1)
       eyhi = wy2 + CLAMP_SPANS*(wy2 - wy1)
 
-      ! leave the right margin for the level colorbar when an energy
-      ! field is shown (convplot shrinks the axes box the same way)
+      ! leave the right margin for the colorbar whenever a colour field is
+      ! shown (an energy layer, or a generic quantized column)
       layer = layer_of_cfield()
-      vx2 = merge(0.89d0, 0.95d0, layer >= 0)
+      fidx = 0
+      if (layer < 0) fidx = field_of_cfield()
+      colored = (layer >= 0 .or. fidx > 0)
+      vx2 = merge(0.89d0, 0.95d0, colored)
 
       ! there used to be a bug in giza_open_device that didnt let it to respect
       ! clipping, so you had to call it twice to absorb the default one.
@@ -664,8 +680,13 @@ contains
       !
       ! When `color` selects a nuclear/neutrino energy field, it is
       ! drawn first as solid gain (blue) / loss (magenta) bands, and the
-      ! convection hatching is overlaid on top.
-      if (layer >= 0) call draw_energy(layer) ! color/energy layer
+      ! convection hatching is overlaid on top.  A generic column field is
+      ! drawn the same way as nested colormap contours.
+      if (layer >= 0) then
+         call draw_energy(layer)             ! color/energy layer
+      else if (fidx > 0) then
+         call draw_field(fidx)               ! generic column colour field
+      end if
       call draw_convection() ! convective hatch
       call draw_surface() ! surface of star
 
@@ -680,8 +701,12 @@ contains
       call giza_label(trim(xlabel), trim(ylabel), '')
 
       ! make colorbar + other
-      if (layer >= 0) then
-         call draw_colorbar(layer)
+      if (colored) then
+         if (layer >= 0) then
+            call draw_colorbar(layer)
+         else
+            call draw_field_colorbar(fidx)
+         end if
          ! restore the plot viewport/window so the interactive cursor
          ! keeps mapping pixels to data coordinates
          call giza_set_viewport(0.12d0, vx2, 0.12d0, 0.96d0)
@@ -1019,6 +1044,10 @@ contains
          ecache(l)%gmax = 0; ecache(l)%lmax = 0
          ecache(l)%valid = .false.
       end do
+      ! field band caches are view-dependent (mass/radius interfaces), so
+      ! drop and re-size them to the current registry on every invalidation
+      if (allocated(fcache)) deallocate (fcache)
+      if (nfields > 0) allocate (fcache(nfields))
    end subroutine cache_invalidate
 
    subroutine draw_bandset(bs)
@@ -1442,6 +1471,215 @@ contains
       end select
    end function layer_of_cfield
 
+   ! resolve st%cfield to a registered colour-field index (1..nfields), or 0.
+   ! matches the source column name exactly first, then a few friendly
+   ! aliases against the canonical names the readers emit.
+   pure function field_of_cfield() result(f)
+      integer(int32) :: f, k
+      character(len=len(st%cfield)) :: want
+      f = 0
+      if (.not. allocated(field_names)) return
+      want = trim(st%cfield)
+      do k = 1, nfields
+         if (trim(field_names(k)) == want) then
+            f = k
+            return
+         end if
+      end do
+      ! aliases: try each canonical name a group maps to, first present wins
+      select case (want)
+      case ('temperature', 'temp', 'T')
+         f = first_field(['T_K   ', 'logT  ', 'T     '])
+      case ('density', 'rho', 'Rho')
+         f = first_field(['rho_gcc', 'logRho ', 'rho    '])
+      case ('luminosity', 'lum', 'L')
+         f = first_field(['L_erg_s   ', 'logL      ', 'luminosity'])
+      case ('pressure', 'P')
+         f = first_field(['logP    ', 'pressure'])
+      end select
+   end function field_of_cfield
+
+   ! index of the first of the given canonical names that is registered, or 0
+   pure function first_field(names) result(f)
+      character(len=*), intent(in) :: names(:)
+      integer(int32) :: f, i, k
+      f = 0
+      if (.not. allocated(field_names)) return
+      do i = 1, size(names)
+         do k = 1, nfields
+            if (trim(field_names(k)) == trim(names(i))) then
+               f = k
+               return
+            end if
+         end do
+      end do
+   end function first_field
+
+   ! number of step-function entries in a model's field-f layer
+   pure function field_layer_len(i, f) result(n)
+      integer(int32), intent(in) :: i, f
+      integer(int32) :: n
+      n = 0
+      if (f < 1 .or. f > data(i)%nfld) return
+      n = data(i)%fld(f)%n
+   end function field_layer_len
+
+   ! copy a model's field-f (level, coord-index) step function into buffers,
+   ! parallel to get_layer_buf for the energy layers
+   subroutine get_field_buf(i, f, vals, idxs, n)
+      integer(int32), intent(in)  :: i, f
+      integer(int32), intent(out) :: vals(:), idxs(:)
+      integer(int32), intent(out) :: n
+      n = field_layer_len(i, f)
+      if (n > 0) then
+         vals(1:n) = int(data(i)%fld(f)%lev, int32)
+         idxs(1:n) = int(data(i)%fld(f)%idx, int32)
+      end if
+   end subroutine get_field_buf
+
+   ! Trace every contour bin of field f into a nested bandset (bin 1 covers the
+   ! whole star, each higher bin nests inward), reusing the energy band tracer.
+   subroutine build_field_cache(f)
+      integer(int32), intent(in) :: f
+      type(tracer_t) :: tr
+      integer(int32) :: i, n, lev, maxn, m
+      integer(int32), allocatable :: lvals(:), lidxs(:)
+      real(real64), allocatable   :: ivlo(:), ivhi(:)
+      associate (fc => fcache(f))
+         if (allocated(fc%band)) deallocate (fc%band)
+         fc%nlev = FIELD_NBINS
+         allocate (fc%band(fc%nlev))
+         maxn = 1
+         do i = 1, nmodels
+            maxn = max(maxn, field_layer_len(i, f))
+         end do
+         call tracer_alloc(tr, 64_int32, nmodels)
+         allocate (lvals(maxn), lidxs(maxn), ivlo(maxn + 1), ivhi(maxn + 1))
+         do lev = 1, fc%nlev
+            call tracer_reset(tr)
+            do i = 1, nmodels
+               call get_field_buf(i, f, lvals, lidxs, n)
+               call level_intervals(i, lvals, lidxs, n, lev, ivlo, ivhi, m)
+               call tracer_step(tr, fc%band(lev), i, ivlo, ivhi, m)
+            end do
+            call tracer_flush(tr, fc%band(lev))
+         end do
+         deallocate (lvals, lidxs, ivlo, ivhi)
+         call tracer_dealloc(tr)
+         fc%valid = .true.
+      end associate
+   end subroutine build_field_cache
+
+   ! Generic colour field: fill each contour bin as nested solid bands shaded
+   ! by the colormap, coolest bin (1) first so hotter bins overpaint inward.
+   subroutine draw_field(f)
+      integer(int32), intent(in) :: f
+      integer(int32) :: lev
+      real(real64) :: t, r, g, b
+      if (f < 1 .or. f > nfields) return
+      if (.not. fcache(f)%valid) call build_field_cache(f)
+
+      call giza_set_fill(1)
+      call giza_set_line_width(1.d0)
+      associate (fc => fcache(f))
+         do lev = 1, fc%nlev
+            t = (real(lev, real64) - 0.5d0)/real(fc%nlev, real64)
+            call colormap(t, r, g, b)
+            call giza_set_colour_representation(7, r, g, b)
+            call giza_set_colour_index(7)
+            call draw_bandset(fc%band(lev))
+         end do
+      end associate
+   end subroutine draw_field
+
+   ! colorbar for a generic column field: a smooth colormap strip spanning
+   ! [vmin, vmax] across the whole run, value ticks written up the strip, and
+   ! the column name (with 'log' when log-binned) as a vertical title.
+   subroutine draw_field_colorbar(f)
+      integer(int32), intent(in) :: f
+      integer(int32), parameter :: NTICK = 5
+      integer(int32) :: lev, k
+      real(real64) :: dy, y0, t, r, g, b, frac
+      character(len=24) :: txt
+      character(len=40) :: title
+
+      call giza_set_viewport(0.90d0, 0.99d0, 0.12d0, 0.96d0)
+      call giza_set_window(0.d0, 1.d0, 0.d0, 1.d0)
+      call giza_set_fill(1)
+      call giza_set_character_height(0.65d0)
+
+      dy = 1.d0/real(FIELD_NBINS, real64)
+      do lev = 1, FIELD_NBINS
+         t = (real(lev, real64) - 0.5d0)/real(FIELD_NBINS, real64)
+         call colormap(t, r, g, b)
+         call giza_set_colour_representation(7, r, g, b)
+         call giza_set_colour_index(7)
+         y0 = real(lev - 1, real64)*dy
+         call giza_rectangle(0.d0, 0.40d0, y0, y0 + dy)
+      end do
+
+      ! value ticks written up the strip, dark text on the light (high) end
+      ! and light text on the dark (low) end so they stay legible
+      do k = 0, NTICK
+         frac = real(k, real64)/real(NTICK, real64)
+         call fmt_field_value(f, frac, txt)
+         call giza_set_colour_index(merge(1, 0, frac > 0.55d0))
+         ! inset the end ticks so they clear the strip edges / plot frame
+         call giza_ptext(0.20d0, 0.03d0 + frac*0.94d0, 90.d0, 0.5d0, trim(txt))
+      end do
+
+      title = trim(field_names(f))
+      if (field_log(f)) title = 'log '//trim(title)
+      call giza_set_colour_index(1)
+      call giza_ptext(0.65d0, 0.5d0, 90.d0, 0.5d0, trim(title))
+      call giza_set_character_height(1.d0)
+   end subroutine draw_field_colorbar
+
+   ! format the field value at fractional position frac in [0,1] up the strip
+   subroutine fmt_field_value(f, frac, txt)
+      integer(int32), intent(in) :: f
+      real(real64), intent(in) :: frac
+      character(len=*), intent(out) :: txt
+      real(real64) :: a, b, v
+      a = field_vmin(f); b = field_vmax(f)
+      if (field_log(f)) then
+         a = log10(max(a, LOGMIN)); b = log10(max(b, LOGMIN))
+         v = a + frac*(b - a)          ! label the log value directly
+         write (txt, '(f0.2)') v
+      else
+         v = a + frac*(b - a)
+         if (abs(v) >= 1.d4 .or. (v /= 0.d0 .and. abs(v) < 1.d-2)) then
+            write (txt, '(es9.2)') v
+         else
+            write (txt, '(f0.3)') v
+         end if
+      end if
+   end subroutine fmt_field_value
+
+   ! perceptual-ish sequential colormap (viridis approximation) mapping
+   ! t in [0,1] to r,g,b in [0,1]; low = dark blue/purple, high = yellow
+   pure subroutine colormap(t, r, g, b)
+      real(real64), intent(in) :: t
+      real(real64), intent(out) :: r, g, b
+      integer(int32), parameter :: NC = 8
+      real(real64), parameter :: cr(NC) = &
+         [0.267d0, 0.283d0, 0.254d0, 0.207d0, 0.164d0, 0.478d0, 0.741d0, 0.993d0]
+      real(real64), parameter :: cg(NC) = &
+         [0.005d0, 0.141d0, 0.265d0, 0.372d0, 0.471d0, 0.821d0, 0.873d0, 0.906d0]
+      real(real64), parameter :: cb(NC) = &
+         [0.329d0, 0.458d0, 0.530d0, 0.553d0, 0.558d0, 0.318d0, 0.150d0, 0.144d0]
+      real(real64) :: x, u
+      integer(int32) :: i0, i1
+      x = min(max(t, 0.d0), 1.d0)*real(NC - 1, real64)
+      i0 = int(x) + 1
+      if (i0 >= NC) i0 = NC - 1
+      i1 = i0 + 1
+      u = x - real(i0 - 1, real64)
+      r = cr(i0) + u*(cr(i1) - cr(i0))
+      g = cg(i0) + u*(cg(i1) - cg(i0))
+      b = cb(i0) + u*(cb(i1) - cb(i0))
+   end subroutine colormap
+
    ! copy a model's level-value / coordinate-index arrays for a layer
    subroutine get_layer(i, layer, vals, idxs, n)
       integer(int32), intent(in)  :: i, layer
@@ -1673,5 +1911,27 @@ contains
       call cache_invalidate()
       call build_axes()
    end subroutine kipp_rebuild
+
+   ! print the colour fields available for `color <name>`, with the value
+   ! range and binning each carries.  the fixed energy/convtype selectors are
+   ! always available; the rest come from the loaded source's columns.
+   subroutine kipp_list_fields()
+      integer(int32) :: k
+      character(len=8) :: scale
+      print '(a)', 'color selectors:'
+      print '(a)', '  convtype   (no colour field, convection hatch only)'
+      print '(a)', '  epsnuc     nuclear energy layer (log erg/g/s)'
+      print '(a)', '  neu        neutrino energy layer (log erg/g/s)'
+      if (.not. allocated(field_names) .or. nfields < 1) then
+         print '(a)', '  (no extra column fields in this source)'
+         return
+      end if
+      print '(a)', '  column fields (min .. max across the run):'
+      do k = 1, nfields
+         scale = merge('log ', 'lin ', field_log(k))
+         print '(a,a16,a,a,es11.3,a,es11.3)', '    ', field_names(k), &
+            '  ', trim(scale), field_vmin(k), ' .. ', field_vmax(k)
+      end do
+   end subroutine kipp_list_fields
 
 end module kipp

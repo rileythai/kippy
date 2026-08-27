@@ -18,13 +18,18 @@ module mesaload
    ! (cells grouped by model, one row per zone); its column layout comes from a
    ! sidecar <file>.hdr.  loadkipp streams it into the same convtype records.
    !
-   ! TODO: add the option to use EITHER eps_nuc or net_total_energy or wahterve the column is
+   ! any non-structural column of the source (a .kipp stream, or a curated set
+   ! of MESA profile columns) is registered as a generic colour field: its
+   ! per-cell values are quantized into FIELD_NBINS contour levels spanning the
+   ! min/max across the whole model sequence, so `color <column>` can shade the
+   ! diagram by e.g. temperature with a colorbar reflecting the real range.
 
    use typedef, only: &
       int32, int64, real64
    use convdata, only: &
-      convtype, data, &
-      nuc_kind, idx_kind, nuc_kind_len, idx_kind_len
+      convtype, fieldlayer, data, &
+      nuc_kind, idx_kind, nuc_kind_len, idx_kind_len, &
+      FIELD_NBINS, nfields, field_names, field_vmin, field_vmax, field_log
    use convload, only: &
       loadconv, sort_models
 !$ use omp_lib, only: omp_get_max_threads
@@ -39,6 +44,10 @@ module mesaload
    real(real64), parameter :: SOLMASS = 1.9892d33   ! g
    real(real64), parameter :: SOLRAD = 6.9599d10   ! cm
    real(real64), parameter :: YR = 31556952.d0  ! s
+
+   ! floor fed to log10 when log-binning a field so non-positive samples do
+   ! not trap; well below any physical value that would be log-binned
+   real(real64), parameter :: LOGTINY = 1.d-99
 
    ! log10(erg/g/s) value mapped to energy level 1; cells below this floor
    ! draw no energy band.  tunable -- higher hides weak burning.  the
@@ -56,6 +65,20 @@ module mesaload
    ! memory subsystem saturates,
    ! override at runtime with a lower OMP_NUM_THREADS
    integer(int32), parameter :: MESA_MAX_THREADS = 4
+
+   ! curated MESA profile body columns offered as colour fields.  the whole
+   ! profile body is huge, so only these physically useful scalars are read;
+   ! any listed name absent from a run is simply skipped.
+   integer(int32), parameter :: MESA_NCAND = 9
+   character(len=16), parameter :: MESA_FIELD_CAND(MESA_NCAND) = [ &
+      character(len=16) :: 'logT', 'logRho', 'logL', 'luminosity', 'logP', &
+      'pressure', 'opacity', 'entropy', 'velocity']
+
+   ! per-profile raw field columns held between the parallel read and the
+   ! serial range/quantize step (center -> surface, matching the coord order)
+   type :: rawset
+      real(real64), allocatable :: v(:, :)     ! (nz, nfields)
+   end type rawset
 
 contains
 
@@ -84,8 +107,10 @@ contains
       integer(int32), intent(in) :: ifirst, ilast
 
       integer(int32) :: iunit, iostat, nidx, i, nkeep, m, prio, pf, nthreads
-      integer(int32), allocatable :: mdl(:), prof(:)
+      integer(int32) :: nf, f, k
+      integer(int32), allocatable :: mdl(:), prof(:), fld_col(:)
       character(len=256) :: idxfile
+      type(rawset), allocatable :: rf(:)
 
       idxfile = trim(dirname)//'/profiles.index'
       open (NEWUNIT=iunit, FILE=trim(idxfile), STATUS='OLD', &
@@ -115,6 +140,12 @@ contains
 
       if (allocated(data)) deallocate (data)
       allocate (data(nkeep))
+      allocate (rf(nkeep))
+
+      ! register the colour fields present in this run from the first profile's
+      ! body header, so every read_profile call fills the same field slots
+      call register_mesa_fields(dirname, prof(1), fld_col, nf)
+
       ! each profile parses into its own data(i) slot with no shared state, so
       ! read them concurrently. schedule(dynamic) balances the uneven per-file
       ! cost (profiles differ in zone count). read_profile uses NEWUNIT units
@@ -124,16 +155,85 @@ contains
       !$omp parallel do default(shared) private(i) schedule(dynamic) &
       !$omp num_threads(nthreads)
       do i = 1, nkeep
-         call read_profile(dirname, prof(i), data(i))
+         call read_profile(dirname, prof(i), data(i), fld_col, nf, rf(i))
          data(i)%ncyc = mdl(i)     ! index mapping is authoritative
       end do
       !$omp end parallel do
       deallocate (mdl, prof)
 
+      ! range over the whole sequence, then quantize each profile's raw field
+      ! columns into its record's fld layers (serial: the reduction and the
+      ! shared registry are not thread-safe)
+      do i = 1, nkeep
+         do f = 1, nf
+            do k = 1, size(rf(i)%v, 1)
+               call update_field_range(f, rf(i)%v(k, f))
+            end do
+         end do
+      end do
+      do f = 1, nf
+         call finalize_field_log(f)
+      end do
+      do i = 1, nkeep
+         data(i)%nfld = nf
+         if (nf > 0) allocate (data(i)%fld(nf))
+         do f = 1, nf
+            call build_field_layer(rf(i)%v(:, f), size(rf(i)%v, 1), f, &
+                                   data(i)%fld(f))
+         end do
+      end do
+      deallocate (rf, fld_col)
+
       call sort_models()
       print *, '[loadmesa] Loaded models', data(1)%ncyc, ' - ', &
          data(size(data))%ncyc
    end subroutine loadmesa
+
+   ! register the curated colour fields present in a run.  reads the body
+   ! header of one profile, matches MESA_FIELD_CAND against it, and sets the
+   ! shared registry + the body column index of each matched field.
+   subroutine register_mesa_fields(dirname, pnum, fld_col, nf)
+      character(len=*), intent(in) :: dirname
+      integer(int32), intent(in) :: pnum
+      integer(int32), allocatable, intent(out) :: fld_col(:)
+      integer(int32), intent(out) :: nf
+      integer(int32) :: iunit, iostat, c, ci
+      integer(int32), allocatable :: tmpcol(:)
+      integer(int32) :: tmpcand(MESA_NCAND)
+      character(len=256) :: fname, bnames
+      character(len=8192) :: scratch
+
+      fname = trim(dirname)//'/profile'//trim(itoa(pnum))//'.data'
+      open (NEWUNIT=iunit, FILE=trim(fname), STATUS='OLD', &
+            ACTION='READ', IOSTAT=iostat)
+      if (iostat /= 0) &
+         error stop '[register_mesa_fields] cannot open '//trim(fname)
+      read (iunit, '(a)') scratch      ! 1 header col indices
+      read (iunit, '(a)') scratch      ! 2 header names
+      read (iunit, '(a)') scratch      ! 3 header values
+      read (iunit, '(a)') scratch      ! 4 blank
+      read (iunit, '(a)') scratch      ! 5 body col indices
+      read (iunit, '(a)') bnames       ! 6 body names
+      close (iunit)
+
+      allocate (tmpcol(MESA_NCAND))
+      nf = 0
+      do c = 1, MESA_NCAND
+         ci = col_index(bnames, trim(MESA_FIELD_CAND(c)))
+         if (ci < 1) cycle
+         nf = nf + 1
+         tmpcol(nf) = ci
+         tmpcand(nf) = c
+      end do
+
+      call reset_field_registry(nf)
+      allocate (fld_col(nf))
+      do c = 1, nf
+         fld_col(c) = tmpcol(c)
+         field_names(c) = MESA_FIELD_CAND(tmpcand(c))
+      end do
+      deallocate (tmpcol)
+   end subroutine register_mesa_fields
 
    ! stream a raw .kipp cell dump into convtype records.  the file is one
    ! contiguous float64 array of ncols-wide cells, cells grouped by model and
@@ -148,20 +248,24 @@ contains
       integer(int32), parameter :: CHUNK = 65536
 
       character(len=512) :: hdrfile
-      integer(int32) :: ncols
+      integer(int32) :: ncols, ncols2
       integer(int32) :: c_model, c_age, c_dt, c_mass, c_radius, c_mix, c_eps
-      integer(int32) :: iunit, iostat, j, m, ndata, ncap, cur, nz, zcap
+      integer(int32) :: iunit, iostat, j, m, ndata, ncap, cur, nz, zcap, nf, f
       integer(int64) :: fbytes, ncells, ndone, take
       real(real64) :: age, dtsec
       logical :: stopping
       real(real64), allocatable :: buf(:, :)
       real(real64), allocatable :: am(:), ar(:), ae(:)
       integer(int32), allocatable :: amt(:)
+      integer(int32), allocatable :: fld_col(:)
+      character(len=32), allocatable :: colnames(:)
       type(convtype), allocatable :: recs(:)
 
       call find_kipp_header(path, hdrfile)
       call parse_kipp_header(hdrfile, ncols, c_model, c_age, c_dt, &
                              c_mass, c_radius, c_mix, c_eps)
+      call kipp_colnames(hdrfile, ncols2, colnames)
+      call register_kipp_fields(colnames, ncols, fld_col, nf)
 
       open (NEWUNIT=iunit, FILE=trim(path), STATUS='OLD', ACTION='READ', &
             FORM='UNFORMATTED', ACCESS='STREAM', CONVERT='little_endian', &
@@ -185,6 +289,11 @@ contains
       age = 0.d0; dtsec = 0.d0
       stopping = .false.
 
+      ! pass A: build the coord/convection/eps records and, in the same sweep,
+      ! accumulate the global min/max of every registered field.  fields are
+      ! quantized in a second streaming pass (below) once the range is known,
+      ! which keeps only the compact step functions resident rather than the
+      ! full raw columns of the whole file.
       allocate (buf(ncols, CHUNK))
       ndone = 0
       do while (ndone < ncells .and. .not. stopping)
@@ -216,6 +325,9 @@ contains
             ae(nz) = buf(c_eps, j)
             age = buf(c_age, j)
             if (c_dt > 0) dtsec = buf(c_dt, j)
+            do f = 1, nf
+               call update_field_range(f, buf(fld_col(f), j))
+            end do
          end do
       end do
       call flush_kipp(recs, ndata, ncap, cur, nz, age, dtsec, &
@@ -226,6 +338,17 @@ contains
       if (ndata < 2) &
          error stop '[loadkipp] need at least 2 models in range'
 
+      do f = 1, nf
+         call finalize_field_log(f)
+      end do
+
+      ! pass B: quantize each field into recs(k)%fld.  recs is still in stream
+      ! order (sort_models runs after), so the k-th in-range model of this pass
+      ! lands in the same record it built in pass A.
+      if (nf > 0) &
+         call fill_kipp_fields(path, ncols, c_model, fld_col, nf, &
+                               recs, ndata, ifirst, ilast)
+
       if (allocated(data)) deallocate (data)
       allocate (data(ndata))
       data(1:ndata) = recs(1:ndata)
@@ -235,6 +358,299 @@ contains
       print *, '[loadkipp] Loaded models', data(1)%ncyc, ' - ', &
          data(size(data))%ncyc
    end subroutine loadkipp
+
+   ! second .kipp streaming pass: re-read the file and quantize each
+   ! registered field column into recs(k)%fld.  the grouping mirrors loadkipp's
+   ! first pass exactly (same monotonic model boundaries, same [ifirst, ilast]
+   ! filter), so the running counter maps each completed in-range model back to
+   ! the record it produced there.
+   subroutine fill_kipp_fields(path, ncols, c_model, fld_col, nf, &
+                               recs, ndata, ifirst, ilast)
+      character(len=*), intent(in) :: path
+      integer(int32), intent(in) :: ncols, c_model, nf, ndata, ifirst, ilast
+      integer(int32), intent(in) :: fld_col(:)
+      type(convtype), intent(inout) :: recs(:)
+
+      integer(int32), parameter :: CHUNK = 65536
+      integer(int32) :: iunit, iostat, j, m, cur, nz, zcap, counter, f
+      integer(int64) :: fbytes, ncells, ndone, take
+      logical :: stopping
+      real(real64), allocatable :: buf(:, :), fb(:, :)
+
+      open (NEWUNIT=iunit, FILE=trim(path), STATUS='OLD', ACTION='READ', &
+            FORM='UNFORMATTED', ACCESS='STREAM', CONVERT='little_endian', &
+            IOSTAT=iostat)
+      if (iostat /= 0) &
+         error stop '[fill_kipp_fields] cannot reopen '//trim(path)
+      inquire (UNIT=iunit, SIZE=fbytes)
+      ncells = fbytes/(int(ncols, int64)*8_int64)
+
+      zcap = 8192
+      allocate (fb(nf, zcap))
+      nz = 0
+      cur = -huge(1_int32)
+      counter = 0
+      stopping = .false.
+
+      allocate (buf(ncols, CHUNK))
+      ndone = 0
+      do while (ndone < ncells .and. .not. stopping)
+         take = min(int(CHUNK, int64), ncells - ndone)
+         read (iunit, IOSTAT=iostat) buf(:, 1:take)
+         if (iostat /= 0) &
+            error stop '[fill_kipp_fields] short read'
+         ndone = ndone + take
+         do j = 1, int(take, int32)
+            m = nint(buf(c_model, j))
+            if (m /= cur) then
+               call flush_kipp_fields(recs, counter, cur, nz, fb, nf, &
+                                      ifirst, ilast)
+               cur = m
+               nz = 0
+               if (m > ilast) then
+                  stopping = .true.
+                  exit
+               end if
+            end if
+            if (m < ifirst .or. m > ilast) cycle
+            nz = nz + 1
+            if (nz > zcap) call grow_fb(fb, zcap)
+            do f = 1, nf
+               fb(f, nz) = buf(fld_col(f), j)
+            end do
+         end do
+      end do
+      call flush_kipp_fields(recs, counter, cur, nz, fb, nf, ifirst, ilast)
+      close (iunit)
+      deallocate (buf, fb)
+
+      if (counter /= ndata) &
+         error stop '[fill_kipp_fields] model grouping drifted between passes'
+   end subroutine fill_kipp_fields
+
+   ! quantize one model's accumulated field columns (surface -> center as read)
+   ! into the matching record's fld layers, reversing to center -> surface.
+   subroutine flush_kipp_fields(recs, counter, model, nz, fb, nf, ifirst, ilast)
+      type(convtype), intent(inout) :: recs(:)
+      integer(int32), intent(inout) :: counter
+      integer(int32), intent(in) :: model, nz, nf, ifirst, ilast
+      real(real64), intent(in) :: fb(:, :)
+      real(real64), allocatable :: raw(:)
+      integer(int32) :: f, k
+
+      if (nz < 1) return
+      if (model < ifirst .or. model > ilast) return
+      counter = counter + 1
+      if (recs(counter)%ncyc /= model) &
+         error stop '[flush_kipp_fields] record/model mismatch between passes'
+
+      recs(counter)%nfld = nf
+      allocate (recs(counter)%fld(nf))
+      allocate (raw(nz))
+      do f = 1, nf
+         do k = 1, nz
+            raw(k) = fb(f, nz - k + 1)
+         end do
+         call build_field_layer(raw, nz, f, recs(counter)%fld(f))
+      end do
+      deallocate (raw)
+   end subroutine flush_kipp_fields
+
+   ! grow the per-model field accumulation buffer (2D, nf x zone), preserving
+   ! contents
+   subroutine grow_fb(fb, zcap)
+      real(real64), allocatable, intent(inout) :: fb(:, :)
+      integer(int32), intent(inout) :: zcap
+      real(real64), allocatable :: t(:, :)
+      integer(int32) :: old
+      old = zcap
+      zcap = zcap*2
+      allocate (t(size(fb, 1), zcap))
+      t(:, 1:old) = fb
+      call move_alloc(t, fb)
+   end subroutine grow_fb
+
+   ! read the sidecar header a second time and return every column name in
+   ! order (blank for any index a line does not define), so the readers can
+   ! pick the non-structural columns to expose as colour fields.
+   subroutine kipp_colnames(hdrfile, ncols, names)
+      character(len=*), intent(in) :: hdrfile
+      integer(int32), intent(out) :: ncols
+      character(len=32), allocatable, intent(out) :: names(:)
+      integer(int32), parameter :: MAXC = 512
+      integer(int32) :: iunit, iostat, idx
+      character(len=256) :: line, key, nm
+      character(len=32) :: tmp(MAXC)
+
+      tmp = ''
+      ncols = 0
+      open (NEWUNIT=iunit, FILE=trim(hdrfile), STATUS='OLD', ACTION='READ', &
+            IOSTAT=iostat)
+      if (iostat /= 0) &
+         error stop '[kipp_colnames] cannot open '//trim(hdrfile)
+      do
+         read (iunit, '(a)', IOSTAT=iostat) line
+         if (iostat /= 0) exit
+         line = adjustl(line)
+         if (len_trim(line) == 0) cycle
+         read (line, *, IOSTAT=iostat) key
+         if (iostat /= 0) cycle
+         if (key == 'ncols') then
+            read (line, *, IOSTAT=iostat) key, ncols
+         else if (key == 'dtype' .or. key == 'columns' .or. key == 'columns:') then
+            cycle
+         else
+            read (line, *, IOSTAT=iostat) idx, nm
+            if (iostat /= 0) cycle
+            if (idx >= 1 .and. idx <= MAXC) tmp(idx) = nm
+         end if
+      end do
+      close (iunit)
+      if (ncols < 1) ncols = MAXC
+      allocate (names(ncols))
+      names = tmp(1:ncols)
+   end subroutine kipp_colnames
+
+   ! register every non-structural source column as a colour field.  sets the
+   ! shared convdata registry (names + reset ranges) and returns the source
+   ! column index of each field.
+   subroutine register_kipp_fields(names, ncols, fld_col, nf)
+      character(len=*), intent(in) :: names(:)
+      integer(int32), intent(in) :: ncols
+      integer(int32), allocatable, intent(out) :: fld_col(:)
+      integer(int32), intent(out) :: nf
+      integer(int32) :: c
+      integer(int32), allocatable :: tmpcol(:)
+
+      allocate (tmpcol(ncols))
+      nf = 0
+      do c = 1, ncols
+         if (len_trim(names(c)) == 0) cycle
+         if (is_structural_kipp(names(c))) cycle
+         nf = nf + 1
+         tmpcol(nf) = c
+      end do
+      call reset_field_registry(nf)
+      allocate (fld_col(nf))
+      do c = 1, nf
+         fld_col(c) = tmpcol(c)
+         field_names(c) = names(tmpcol(c))
+      end do
+      deallocate (tmpcol)
+   end subroutine register_kipp_fields
+
+   ! true for the columns already consumed as axes/structure or the default
+   ! energy layer, which are not offered as generic colour fields.
+   pure function is_structural_kipp(name) result(yes)
+      character(len=*), intent(in) :: name
+      logical :: yes
+      select case (trim(name))
+      case ('model_number', 'model', &
+            'star_age_yr', 'star_age', 'age_yr', 'dt_s', 'dt', &
+            'm_g', 'mass_g', 'mass', 'r_cm', 'radius_cm', 'r', &
+            'mixing_type', 'mix_type', 'mixing', &
+            'eps_net_erg_g_s', 'eps_nuc', 'eps_net', 'eps')
+         yes = .true.
+      case default
+         yes = .false.
+      end select
+   end function is_structural_kipp
+
+   ! (re)allocate the shared colour-field registry for nf fields, with ranges
+   ! reset to be grown by update_field_range.
+   subroutine reset_field_registry(nf)
+      integer(int32), intent(in) :: nf
+      if (allocated(field_names)) deallocate (field_names)
+      if (allocated(field_vmin)) deallocate (field_vmin)
+      if (allocated(field_vmax)) deallocate (field_vmax)
+      if (allocated(field_log)) deallocate (field_log)
+      nfields = nf
+      allocate (field_names(nf), field_vmin(nf), field_vmax(nf), field_log(nf))
+      if (nf > 0) then
+         field_names = ''
+         field_vmin = huge(1.d0)
+         field_vmax = -huge(1.d0)
+         field_log = .false.
+      end if
+   end subroutine reset_field_registry
+
+   ! widen field f's running [vmin, vmax] with one finite sample
+   subroutine update_field_range(f, v)
+      integer(int32), intent(in) :: f
+      real(real64), intent(in) :: v
+      if (v /= v) return                 ! skip NaN
+      if (abs(v) > huge(1.d0)) return     ! skip +/-Inf
+      if (v < field_vmin(f)) field_vmin(f) = v
+      if (v > field_vmax(f)) field_vmax(f) = v
+   end subroutine update_field_range
+
+   ! choose log binning for a field whose range is strictly positive and spans
+   ! more than two decades (temperature, density, luminosity); linear otherwise
+   subroutine finalize_field_log(f)
+      integer(int32), intent(in) :: f
+      logical :: wide
+      if (field_vmax(f) < field_vmin(f)) then     ! never sampled
+         field_vmin(f) = 0.d0; field_vmax(f) = 1.d0
+      end if
+      wide = (field_vmin(f) > 0.d0) .and. &
+             (field_vmax(f) > field_vmin(f)*1.d2)
+      field_log(f) = wide
+   end subroutine finalize_field_log
+
+   ! contour bin (1..FIELD_NBINS) of a value under field f's range and scale
+   pure function field_level(v, f) result(lev)
+      real(real64), intent(in) :: v
+      integer(int32), intent(in) :: f
+      integer(int32) :: lev
+      real(real64) :: a, b, x, t
+      a = field_vmin(f); b = field_vmax(f)
+      if (field_log(f)) then
+         a = log10(max(a, LOGTINY))
+         b = log10(max(b, LOGTINY))
+         x = log10(max(v, LOGTINY))
+      else
+         x = v
+      end if
+      if (b <= a) then
+         lev = 1
+         return
+      end if
+      t = (x - a)/(b - a)
+      lev = 1 + int(t*real(FIELD_NBINS, real64))
+      if (lev < 1) lev = 1
+      if (lev > FIELD_NBINS) lev = FIELD_NBINS
+   end function field_level
+
+   ! run-length compress a per-cell field (center -> surface) into a
+   ! (level, coordinate-index) step function, the same shape build_energy
+   ! produces.  every cell maps to a valid bin, so the star tiles fully.
+   subroutine build_field_layer(raw, nz, f, out)
+      real(real64), intent(in) :: raw(:)
+      integer(int32), intent(in) :: nz, f
+      type(fieldlayer), intent(out) :: out
+      integer(int32) :: k, lev, prev, n
+      integer(int32), allocatable :: lv(:), ix(:)
+
+      allocate (lv(nz), ix(nz))
+      n = 0
+      prev = -huge(1_int32)
+      do k = 1, nz
+         lev = field_level(raw(k), f)
+         if (lev /= prev) then
+            n = n + 1
+            lv(n) = lev
+            ix(n) = k
+            prev = lev
+         end if
+      end do
+      out%n = n
+      allocate (out%lev(n), out%idx(n))
+      if (n > 0) then
+         out%lev = int(lv(1:n), nuc_kind)
+         out%idx = int(ix(1:n), idx_kind)
+      end if
+      deallocate (lv, ix)
+   end subroutine build_field_layer
 
    ! turn one model's accumulated zones (surface -> center as read) into a
    ! convtype record appended to recs, growing recs as needed.  a run out of
@@ -445,13 +861,17 @@ contains
       if (yes) yes = (s(ls - lf + 1:ls) == suf)
    end function has_suffix
 
-   ! parse profile<pnum>.data into one convtype record.
-   subroutine read_profile(dirname, pnum, cnv)
+   ! parse profile<pnum>.data into one convtype record.  the raw colour-field
+   ! columns (fld_col into the body row) are collected into rf, center ->
+   ! surface, for the caller to range and quantize.
+   subroutine read_profile(dirname, pnum, cnv, fld_col, nf, rf)
       character(len=*), intent(in) :: dirname
-      integer(int32), intent(in) :: pnum
+      integer(int32), intent(in) :: pnum, nf
+      integer(int32), intent(in) :: fld_col(:)
       type(convtype), intent(out) :: cnv
+      type(rawset), intent(out) :: rf
 
-      integer(int32) :: iunit, iostat, r, src, nz, k
+      integer(int32) :: iunit, iostat, r, src, nz, k, f
       integer(int32) :: maxh, maxb
       integer(int32) :: c_model, c_age, c_mass_h, c_nz
       integer(int32) :: c_mass, c_logr, c_mix, c_eps, c_neu
@@ -459,6 +879,7 @@ contains
       character(len=8192) :: hnames, bnames, hvals
       real(real64), allocatable :: hv(:), row(:)
       real(real64), allocatable :: massf(:), logrf(:), epsf(:), enuf(:)
+      real(real64), allocatable :: fldf(:, :)
       integer(int32), allocatable :: mtf(:)
       real(real64), allocatable :: xm(:), rn(:), eps(:), enu(:)
       integer(int32), allocatable :: mt(:)
@@ -506,8 +927,12 @@ contains
       ! body rows run surface -> center; read them then reverse to the
       ! center -> surface ascending order the renderer expects
       maxb = max(c_mass, c_logr, c_mix, c_eps, c_neu)
+      do f = 1, nf
+         maxb = max(maxb, fld_col(f))
+      end do
       allocate (row(maxb))
       allocate (massf(nz), logrf(nz), mtf(nz), epsf(nz), enuf(nz))
+      allocate (fldf(nz, nf))
       do r = 1, nz
          read (iunit, *, IOSTAT=iostat) row(1:maxb)
          if (iostat /= 0) &
@@ -517,10 +942,14 @@ contains
          mtf(r) = nint(row(c_mix))
          epsf(r) = row(c_eps)
          enuf(r) = row(c_neu)
+         do f = 1, nf
+            fldf(r, f) = row(fld_col(f))
+         end do
       end do
       close (iunit)
 
       allocate (xm(nz), rn(nz), mt(nz), eps(nz), enu(nz))
+      allocate (rf%v(nz, nf))
       do k = 1, nz
          src = nz - k + 1
          xm(k) = massf(src)*SOLMASS
@@ -528,8 +957,11 @@ contains
          mt(k) = mtf(src)
          eps(k) = epsf(src)
          enu(k) = enuf(src)
+         do f = 1, nf
+            rf%v(k, f) = fldf(src, f)
+         end do
       end do
-      deallocate (massf, logrf, mtf, epsf, enuf, hv, row)
+      deallocate (massf, logrf, mtf, epsf, enuf, hv, row, fldf)
 
       cnv%nvers = MESA_NVERS
       cnv%ncoord = nz
