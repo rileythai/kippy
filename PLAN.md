@@ -27,6 +27,7 @@ a vendored giza submodule; Python drives the executables as subprocesses.
 | 8 | Raw `.kipp` binary stream reader (`loadkipp` in `mesaload.f90`) | done | Claude | dispatch on `.kipp` suffix; layout from a sidecar `<file>.hdr` (found next to the file, else basename in cwd); streams the float64 cell dump in chunks (2.7 GB class, ~940 MB RSS, ~5.6 s), groups cells by monotonic `model_number`, reverses surface->center to center->surface, reuses `build_zones`/`build_energy`; single net `eps` column drives the nuc layer, neu layer empty |
 | 9 | Arbitrary column colour fields (`color <column>`) | done | Claude | any non-structural source column is registered as a generic colour field (`convdata` `fieldlayer` + shared `field_names/vmin/vmax/log` registry); values quantized into `FIELD_NBINS=24` contour bins over the min/max across the run (auto log when positive and >2 decades), traced with the existing band tracer, drawn as nested viridis contours with a value-labelled colorbar. `.kipp` reader does two streaming passes (range then quantize) so only compact step functions stay resident; MESA-dir reader registers a curated column set. REPL: `color <column>` + `fields` list. Verified on real `profile.kipp` (T_K log 3.5e3-2.7e8 K, ~27 entries/model) and a synthetic fixture render |
 | 10 | MONASH `seq` file reader (`monload.f90`) + shared `convbuild` module | done | Claude+codex-swarm | seq is a gfortran sequential-unformatted file, one record per model, layout per `seqdump.f90`; mass shells from `omx` (`m=mass*(1-omx)^3`, already center->surface, no reversal), convection from `kcvtn`, approximate `epsnuc` from `dL/dm`, curated colour fields (Temperature/Density/Pressure/Luminosity + 7 reaction rates) reconstructed with seqdump formulas via two-pass range-then-quantize; reader-agnostic builders extracted from `mesaload` into a new `convbuild` module so `mesaload`+`monload` share them without a module cycle; dispatched in `load_convection` on a `seq.` prefix or `.seq` suffix. Verified on a 40-record fixture (models 1-40, T range 8e3-2.3e7 K) + `.cnv`/`convdump` no regression |
+| 12 | Selectable colour-field colormap (`cmap`) | done | Claude | `colormap` in `kipp.f90` dispatches on `st%cmap` for both the field fill (`draw_field`) and its colorbar (`draw_field_colorbar`); default `teal` fades white -> teal-blue (0.09,0.42,0.67) like the epsnuc gain ramp, with `viridis` (perceptual approx, now split into `cmap_viridis`), `blue` (exact epsnuc gain ramp), and `gray`; colorbar tick text now picks black/white by strip luminance so it stays legible on the light-at-low teal ramp; REPL `cmap teal\|viridis\|blue\|gray` validated in `convview.f90`. Verified rendering all four on the 40-record seq fixture (log Temperature 3.91-7.37) |
 | 11 | Model-density strip (port keppy `ModelsLegend`) | done | Claude+codex-swarm | `draw_models` in `kipp.f90` draws one tick per visible model in the top margin at its x, tick height/width/colour scaled by the model-number decade magnitude (`mag`=trailing zeroes, `half`=intervening multiple of five, `lev=2*mag+half`, colour cycles black/red/green/blue by `mag`); its own top-margin viewport is restored to the plot viewport/window afterward so the cursor keeps mapping pixels to data; `models on\|off` REPL toggle in `convview.f90`; on by default. Verified by rendering the seq fixture (red taller ticks at models 10/20/30/40) |
 
 ### Inherited from keppy
@@ -68,6 +69,7 @@ Record key decisions here as they are made. Append only — do not delete previo
 | 2026-08-27 | arbitrary colour columns | reuse signed-log energy levels vs a generic quantized field | Generic field quantized into fixed contour bins over the run min/max | Energy levels are signed log10 decades tuned to eps; a temperature/density column wants a continuous colorbar over its real range. Quantizing to `FIELD_NBINS` bins reuses the fast band tracer and, for the near-monotonic profile fields, compresses to ~bins-per-model entries |
 | 2026-08-27 | `.kipp` field memory | store raw columns then quantize vs two streaming passes | Two streaming passes (range, then quantize) | Storing raw extra columns for a 12 GB file would add several GB of transient RSS; a second disk pass keeps only the compact step functions resident. Grouping is deterministic, so the second pass maps models back to records by stream order (pre-sort) |
 | 2026-09-09 | MONASH `seq` reader scope | minimal geometry only vs curated fields + derived epsnuc | Curated colour fields + derived epsnuc | seq exposes T/rho/P/L and the 7 reaction rates cheaply via seqdump's exact formulas; the default `color epsnuc` is derived from `dL/dm` (approximate: dL carries gravothermal terms, not pure nuclear) so the seq reader behaves like the .cnv/.kipp/MESA ones out of the box |
+| 2026-09-09 | colour-field colormap default | keep viridis vs a white->teal-blue ramp | Default `teal` (white->teal-blue 0.09,0.42,0.67), selectable via `cmap` | The single `colormap` choke point already drives both the field fill and its colorbar, so one dispatch on `st%cmap` switches both; default matches the epsnuc gain-ramp look expected for arbitrary columns. Alternatives (viridis/blue/gray) kept cheap and analytic; colorbar tick text switched to luminance-based black/white so labels stay legible when the ramp is light at the low end (teal), not just dark (viridis) |
 | 2026-09-09 | shared record builders | duplicate in `monload` vs keep in `mesaload` (module cycle) vs new module | New `convbuild` module | `mesaload` dispatch must call `loadmon`, and `monload` must reuse the energy/field/zone builders; a shared `convbuild` (depends only on convdata/typedef) lets both use it without a `mesaload`<->`monload` cycle, and avoids duplicating the quantizers |
 
 ## Session State
@@ -75,6 +77,20 @@ Record key decisions here as they are made. Append only — do not delete previo
 _Updated at the end of each session or major phase._
 
 **Last updated**: 2026-09-09
+**Status (2026-09-09c)**: Added a selectable colour-field colormap (task 12).
+`colormap` in `kipp.f90` now dispatches on `st%cmap` (the viridis table moved to
+a `cmap_viridis` helper), so both the field fill and its colorbar switch
+together. The default `teal` fades white -> teal-blue (0.09,0.42,0.67) like the
+epsnuc gain ramp; `viridis`, `blue` (the exact epsnuc gain ramp) and `gray` are
+the alternatives. `draw_field_colorbar` now chooses tick-text colour from the
+strip luminance under each tick so labels stay legible when the ramp is light at
+the low end. New REPL command `cmap teal|viridis|blue|gray` (validated in
+`convview.f90`). Verified by rendering all four maps on the 40-record seq fixture
+(`.scratch/seq.small`, log Temperature 3.91-7.37). Note: `color <name>` still
+resolves aliases (`temperature`) only against the KEPLER/MESA/.kipp column names,
+not the seq reader's capitalized `Temperature`; that selector-alias gap is
+pre-existing and unrelated to colormaps.
+
 **Status (2026-09-09)**: Added the MONASH `seq` reader (task 10) and extracted
 the shared record builders into a new `convbuild` module. `monload.f90` reads
 the gfortran sequential-unformatted seq stream (layout per `seqdump.f90`) into
