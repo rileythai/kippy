@@ -42,6 +42,7 @@ module kipp
       character(len=64) :: device = '/xw'      ! ?
       character(len=64) :: prefix = 'convview'
       logical           :: interactive = .true.
+      logical           :: showmodels = .true.
       integer           :: devid = -1
    end type kstate_t
 
@@ -712,6 +713,7 @@ contains
          call giza_set_viewport(0.12d0, vx2, 0.12d0, 0.96d0)
          call giza_set_window(wx1, wx2, wy1, wy2)
       end if
+      call draw_models(wx1, wx2, wy1, wy2, vx2)
    end subroutine draw_scene
 
    !---------------------------------------------------------------------
@@ -775,6 +777,48 @@ contains
       call giza_ptext(0.60d0, 0.5d0, 90.d0, 0.5d0, 'log(erg/g/s)')
       call giza_set_character_height(1.d0)
    end subroutine draw_colorbar
+
+   !---------------------------------------------------------------------
+   subroutine draw_models(wx1, wx2, wy1, wy2, vx2)
+      real(real64), intent(in) :: wx1, wx2, wy1, wy2, vx2
+      real(real64) :: x(2), y(2), r, g, b
+      integer(int32) :: i, val, mag, half, lev
+
+      if (.not. st%showmodels) return
+
+      call giza_set_viewport(0.12d0, vx2, 0.965d0, 0.997d0)
+      call giza_set_window(wx1, wx2, 0.d0, 1.d0)
+      y(1) = 1.d0
+      do i = ivis0, ivis1
+         ! mag counts trailing zeroes; half marks the intervening multiple of five
+         val = data(i)%ncyc
+         mag = 0
+         if (val /= 0) then
+            do while (mod(val, 10) == 0)
+               mag = mag + 1
+               val = val/10
+            end do
+         end if
+         half = merge(1_int32, 0_int32, mod(val, 5) == 0)
+         lev = 2*mag + half
+         select case (mod(mag, 4))
+         case (0); r = 0.d0; g = 0.d0; b = 0.d0
+         case (1); r = 1.d0; g = 0.d0; b = 0.d0
+         case (2); r = 0.d0; g = 0.7d0; b = 0.d0
+         case (3); r = 0.d0; g = 0.d0; b = 1.d0
+         end select
+         call giza_set_colour_representation(7, r, g, b)
+         call giza_set_colour_index(7)
+         call giza_set_line_width(1.d0 + real(mag, real64))
+         x = xtrans(xval(i))
+         y(2) = 1.d0 - min(0.9d0, 0.25d0 + 0.13d0*real(lev, real64))
+         call giza_line(2, x, y)
+      end do
+
+      ! restore the plot viewport so the interactive cursor maps pixels to data coordinates
+      call giza_set_viewport(0.12d0, vx2, 0.12d0, 0.96d0)
+      call giza_set_window(wx1, wx2, wy1, wy2)
+   end subroutine draw_models
 
    ! minimum log10 level values (gain, loss) for a layer, from the file
    ! header.  Matches convdata.py minx[layer] = consecutive (gain, loss)

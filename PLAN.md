@@ -27,7 +27,7 @@ a vendored giza submodule; Python drives the executables as subprocesses.
 | 8 | Raw `.kipp` binary stream reader (`loadkipp` in `mesaload.f90`) | done | Claude | dispatch on `.kipp` suffix; layout from a sidecar `<file>.hdr` (found next to the file, else basename in cwd); streams the float64 cell dump in chunks (2.7 GB class, ~940 MB RSS, ~5.6 s), groups cells by monotonic `model_number`, reverses surface->center to center->surface, reuses `build_zones`/`build_energy`; single net `eps` column drives the nuc layer, neu layer empty |
 | 9 | Arbitrary column colour fields (`color <column>`) | done | Claude | any non-structural source column is registered as a generic colour field (`convdata` `fieldlayer` + shared `field_names/vmin/vmax/log` registry); values quantized into `FIELD_NBINS=24` contour bins over the min/max across the run (auto log when positive and >2 decades), traced with the existing band tracer, drawn as nested viridis contours with a value-labelled colorbar. `.kipp` reader does two streaming passes (range then quantize) so only compact step functions stay resident; MESA-dir reader registers a curated column set. REPL: `color <column>` + `fields` list. Verified on real `profile.kipp` (T_K log 3.5e3-2.7e8 K, ~27 entries/model) and a synthetic fixture render |
 | 10 | MONASH `seq` file reader (`monload.f90`) + shared `convbuild` module | done | Claude+codex-swarm | seq is a gfortran sequential-unformatted file, one record per model, layout per `seqdump.f90`; mass shells from `omx` (`m=mass*(1-omx)^3`, already center->surface, no reversal), convection from `kcvtn`, approximate `epsnuc` from `dL/dm`, curated colour fields (Temperature/Density/Pressure/Luminosity + 7 reaction rates) reconstructed with seqdump formulas via two-pass range-then-quantize; reader-agnostic builders extracted from `mesaload` into a new `convbuild` module so `mesaload`+`monload` share them without a module cycle; dispatched in `load_convection` on a `seq.` prefix or `.seq` suffix. Verified on a 40-record fixture (models 1-40, T range 8e3-2.3e7 K) + `.cnv`/`convdump` no regression |
-| 11 | Model-density strip (port keppy `ModelsLegend`) | in progress | Claude+codex-swarm | top-margin tick strip in `kipp.f90`, one tick per model at its time, tick height/width/colour scaled by the model-number decade magnitude (`lev=2*mag+half`); `models on\|off` REPL toggle in `convview.f90`; on by default |
+| 11 | Model-density strip (port keppy `ModelsLegend`) | done | Claude+codex-swarm | `draw_models` in `kipp.f90` draws one tick per visible model in the top margin at its x, tick height/width/colour scaled by the model-number decade magnitude (`mag`=trailing zeroes, `half`=intervening multiple of five, `lev=2*mag+half`, colour cycles black/red/green/blue by `mag`); its own top-margin viewport is restored to the plot viewport/window afterward so the cursor keeps mapping pixels to data; `models on\|off` REPL toggle in `convview.f90`; on by default. Verified by rendering the seq fixture (red taller ticks at models 10/20/30/40) |
 
 ### Inherited from keppy
 
@@ -87,9 +87,14 @@ and the shared constants, so `mesaload` and `monload` share them without a
 module cycle; `load_convection` dispatches seq paths (`seq.` prefix or `.seq`
 suffix) to `loadmon`. Verified on a 40-record fixture (models 1-40, Temperature
 8e3-2.3e7 K) with `color temperature`/`color epsnuc` rendering, and `.cnv`
-(loadconv, 10363 models) + `convdump` show no regression. Task 11 (model-density
-strip, ported from keppy `ModelsLegend`) is next, delegated to a codex-swarm.
-HEAD will advance past `2fe08d3`.
+(loadconv, 10363 models) + `convdump` show no regression.
+
+Also added the model-density strip (task 11): `draw_models` in `kipp.f90` draws
+one tick per visible model in the top margin, tick height/width/colour scaled by
+the model-number decade magnitude (round numbers stand out, clustering reads as
+density); `models on|off` REPL toggle, on by default. Verified visually on the
+seq fixture (taller red ticks at models 10/20/30/40 over the Kippenhahn diagram).
+Both tasks committed on top of `2fe08d3`.
 
 **Status (2026-08-27)**: Added arbitrary column colour fields (task 9). Any
 non-structural source column is registered as a generic colour field in a shared

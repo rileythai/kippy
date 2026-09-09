@@ -94,6 +94,9 @@ program convview
       case ('color', 'colour')
          if (len_trim(a1) > 0) st%cfield = a1
          call kipp_render()
+      case ('models')
+         st%showmodels = (trim(a1) == 'on')
+         call kipp_render()
       case ('fields', 'columns')
          call kipp_list_fields()
       case ('save')
@@ -173,6 +176,7 @@ contains
       print '(a)', '  xscale lin|log        yscale lin|log'
       print '(a)', '  xaxis time|model      yaxis mass|radius      units solar|cgs'
       print '(a)', '  color convtype|epsnuc|neu|<column>   fields  (list columns)'
+      print '(a)', '  models on|off'
       print '(a)', '  cursor (i)            interactive zoom/pan on the plot window'
       print '(a)', '  reset   redraw   save <file.png>   help   quit'
    end subroutine help
