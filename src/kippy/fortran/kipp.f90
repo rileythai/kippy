@@ -39,6 +39,7 @@ module kipp
       real(real64)      :: xmin = 0, xmax = 0, ymin = 0, ymax = 0
       logical           :: xauto = .true., yauto = .true.
       character(len=32) :: cfield = 'epsnuc'   ! convtype | epsnuc | neu | any field name
+      character(len=16) :: cmap = 'teal'       ! colour-field colormap: teal | viridis | blue | gray
       character(len=64) :: device = '/xw'      ! ?
       character(len=64) :: prefix = 'convview'
       logical           :: interactive = .true.
@@ -1662,12 +1663,14 @@ contains
          call giza_rectangle(0.d0, 0.40d0, y0, y0 + dy)
       end do
 
-      ! value ticks written up the strip, dark text on the light (high) end
-      ! and light text on the dark (low) end so they stay legible
+      ! value ticks written up the strip, text colour chosen from the strip
+      ! luminance under each tick (dark text on light cells, light on dark) so
+      ! they stay legible for any cmap (teal is light at the low end)
       do k = 0, NTICK
          frac = real(k, real64)/real(NTICK, real64)
          call fmt_field_value(f, frac, txt)
-         call giza_set_colour_index(merge(1, 0, frac > 0.55d0))
+         call colormap(frac, r, g, b)
+         call giza_set_colour_index(merge(0, 1, 0.299d0*r + 0.587d0*g + 0.114d0*b < 0.5d0))
          ! inset the end ticks so they clear the strip edges / plot frame
          call giza_ptext(0.20d0, 0.03d0 + frac*0.94d0, 90.d0, 0.5d0, trim(txt))
       end do
@@ -1700,10 +1703,33 @@ contains
       end if
    end subroutine fmt_field_value
 
-   ! perceptual-ish sequential colormap (viridis approximation) mapping
-   ! t in [0,1] to r,g,b in [0,1]; low = dark blue/purple, high = yellow
+   ! sequential colour-field colormap mapping t in [0,1] to r,g,b in [0,1],
+   ! selected by st%cmap.  default 'teal' fades white -> teal-blue (the epsnuc
+   ! look); 'viridis' is a perceptual approximation, 'blue' the exact epsnuc
+   ! gain ramp, 'gray' a print-friendly ramp.  unknown names fall back to teal.
    pure subroutine colormap(t, r, g, b)
       real(real64), intent(in) :: t
+      real(real64), intent(out) :: r, g, b
+      real(real64) :: x
+      x = min(max(t, 0.d0), 1.d0)
+      select case (trim(st%cmap))
+      case ('viridis')
+         call cmap_viridis(x, r, g, b)
+      case ('blue')
+         r = 1.d0 - 0.85d0*x; g = r; b = 1.d0
+      case ('gray', 'grey')
+         r = 1.d0 - x; g = r; b = r
+      case default                          ! 'teal': white -> teal-blue
+         r = 1.d0 + x*(0.09d0 - 1.d0)
+         g = 1.d0 + x*(0.42d0 - 1.d0)
+         b = 1.d0 + x*(0.67d0 - 1.d0)
+      end select
+   end subroutine colormap
+
+   ! viridis approximation (8 anchor points, linear between); low = dark
+   ! blue/purple, high = yellow
+   pure subroutine cmap_viridis(x, r, g, b)
+      real(real64), intent(in) :: x
       real(real64), intent(out) :: r, g, b
       integer(int32), parameter :: NC = 8
       real(real64), parameter :: cr(NC) = &
@@ -1712,17 +1738,17 @@ contains
          [0.005d0, 0.141d0, 0.265d0, 0.372d0, 0.471d0, 0.821d0, 0.873d0, 0.906d0]
       real(real64), parameter :: cb(NC) = &
          [0.329d0, 0.458d0, 0.530d0, 0.553d0, 0.558d0, 0.318d0, 0.150d0, 0.144d0]
-      real(real64) :: x, u
+      real(real64) :: xx, u
       integer(int32) :: i0, i1
-      x = min(max(t, 0.d0), 1.d0)*real(NC - 1, real64)
-      i0 = int(x) + 1
+      xx = min(max(x, 0.d0), 1.d0)*real(NC - 1, real64)
+      i0 = int(xx) + 1
       if (i0 >= NC) i0 = NC - 1
       i1 = i0 + 1
-      u = x - real(i0 - 1, real64)
+      u = xx - real(i0 - 1, real64)
       r = cr(i0) + u*(cr(i1) - cr(i0))
       g = cg(i0) + u*(cg(i1) - cg(i0))
       b = cb(i0) + u*(cb(i1) - cb(i0))
-   end subroutine colormap
+   end subroutine cmap_viridis
 
    ! copy a model's level-value / coordinate-index arrays for a layer
    subroutine get_layer(i, layer, vals, idxs, n)

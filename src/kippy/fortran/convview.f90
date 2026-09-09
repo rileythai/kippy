@@ -94,6 +94,13 @@ program convview
       case ('color', 'colour')
          if (len_trim(a1) > 0) st%cfield = a1
          call kipp_render()
+      case ('cmap', 'colormap', 'colourmap')
+         select case (trim(a1))
+         case ('teal', 'viridis', 'blue', 'gray', 'grey')
+            st%cmap = a1; call kipp_render()
+         case default
+            print *, 'cmap teal|viridis|blue|gray'
+         end select
       case ('models')
          st%showmodels = (trim(a1) == 'on')
          call kipp_render()
@@ -176,6 +183,7 @@ contains
       print '(a)', '  xscale lin|log        yscale lin|log'
       print '(a)', '  xaxis time|model      yaxis mass|radius      units solar|cgs'
       print '(a)', '  color convtype|epsnuc|neu|<column>   fields  (list columns)'
+      print '(a)', '  cmap teal|viridis|blue|gray   (colour-field colormap)'
       print '(a)', '  models on|off'
       print '(a)', '  cursor (i)            interactive zoom/pan on the plot window'
       print '(a)', '  reset   redraw   save <file.png>   help   quit'
