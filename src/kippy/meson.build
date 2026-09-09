@@ -34,7 +34,7 @@ omp = dependency('openmp')
 # --- vendored keppy .cnv reader ---
 reader_lib = static_library(
   'kipp_reader',
-  files('fortran/typedef.f90', 'fortran/convdata.f90', 'fortran/convload.f90', 'fortran/mesaload.f90'),
+  files('fortran/typedef.f90', 'fortran/convdata.f90', 'fortran/convload.f90', 'fortran/convbuild.f90', 'fortran/mesaload.f90', 'fortran/monload.f90'),
   fortran_args: fflags,
   dependencies: omp,
   install: false,

@@ -21,3 +21,4 @@ _build/
 *.png
 convview
 convdump
+seq.*

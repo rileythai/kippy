@@ -26,6 +26,8 @@ a vendored giza submodule; Python drives the executables as subprocesses.
 | 7 | Publish to PyPI | pending | — | Package name `kippy` v0.1.0; needs a release build + trusted-publish/CI |
 | 8 | Raw `.kipp` binary stream reader (`loadkipp` in `mesaload.f90`) | done | Claude | dispatch on `.kipp` suffix; layout from a sidecar `<file>.hdr` (found next to the file, else basename in cwd); streams the float64 cell dump in chunks (2.7 GB class, ~940 MB RSS, ~5.6 s), groups cells by monotonic `model_number`, reverses surface->center to center->surface, reuses `build_zones`/`build_energy`; single net `eps` column drives the nuc layer, neu layer empty |
 | 9 | Arbitrary column colour fields (`color <column>`) | done | Claude | any non-structural source column is registered as a generic colour field (`convdata` `fieldlayer` + shared `field_names/vmin/vmax/log` registry); values quantized into `FIELD_NBINS=24` contour bins over the min/max across the run (auto log when positive and >2 decades), traced with the existing band tracer, drawn as nested viridis contours with a value-labelled colorbar. `.kipp` reader does two streaming passes (range then quantize) so only compact step functions stay resident; MESA-dir reader registers a curated column set. REPL: `color <column>` + `fields` list. Verified on real `profile.kipp` (T_K log 3.5e3-2.7e8 K, ~27 entries/model) and a synthetic fixture render |
+| 10 | MONASH `seq` file reader (`monload.f90`) + shared `convbuild` module | done | Claude+codex-swarm | seq is a gfortran sequential-unformatted file, one record per model, layout per `seqdump.f90`; mass shells from `omx` (`m=mass*(1-omx)^3`, already center->surface, no reversal), convection from `kcvtn`, approximate `epsnuc` from `dL/dm`, curated colour fields (Temperature/Density/Pressure/Luminosity + 7 reaction rates) reconstructed with seqdump formulas via two-pass range-then-quantize; reader-agnostic builders extracted from `mesaload` into a new `convbuild` module so `mesaload`+`monload` share them without a module cycle; dispatched in `load_convection` on a `seq.` prefix or `.seq` suffix. Verified on a 40-record fixture (models 1-40, T range 8e3-2.3e7 K) + `.cnv`/`convdump` no regression |
+| 11 | Model-density strip (port keppy `ModelsLegend`) | in progress | Claude+codex-swarm | top-margin tick strip in `kipp.f90`, one tick per model at its time, tick height/width/colour scaled by the model-number decade magnitude (`lev=2*mag+half`); `models on\|off` REPL toggle in `convview.f90`; on by default |
 
 ### Inherited from keppy
 
@@ -65,12 +67,30 @@ Record key decisions here as they are made. Append only — do not delete previo
 | 2026-08-21 | `.kipp` header lookup | fixed path vs search | `<file>.hdr` next to the data, else `<basename>.hdr` in cwd | Sidecar normally ships beside the data; cwd fallback covers a moved/streamed data file, and cwd is not re-checked when the file already lives there |
 | 2026-08-27 | arbitrary colour columns | reuse signed-log energy levels vs a generic quantized field | Generic field quantized into fixed contour bins over the run min/max | Energy levels are signed log10 decades tuned to eps; a temperature/density column wants a continuous colorbar over its real range. Quantizing to `FIELD_NBINS` bins reuses the fast band tracer and, for the near-monotonic profile fields, compresses to ~bins-per-model entries |
 | 2026-08-27 | `.kipp` field memory | store raw columns then quantize vs two streaming passes | Two streaming passes (range, then quantize) | Storing raw extra columns for a 12 GB file would add several GB of transient RSS; a second disk pass keeps only the compact step functions resident. Grouping is deterministic, so the second pass maps models back to records by stream order (pre-sort) |
+| 2026-09-09 | MONASH `seq` reader scope | minimal geometry only vs curated fields + derived epsnuc | Curated colour fields + derived epsnuc | seq exposes T/rho/P/L and the 7 reaction rates cheaply via seqdump's exact formulas; the default `color epsnuc` is derived from `dL/dm` (approximate: dL carries gravothermal terms, not pure nuclear) so the seq reader behaves like the .cnv/.kipp/MESA ones out of the box |
+| 2026-09-09 | shared record builders | duplicate in `monload` vs keep in `mesaload` (module cycle) vs new module | New `convbuild` module | `mesaload` dispatch must call `loadmon`, and `monload` must reuse the energy/field/zone builders; a shared `convbuild` (depends only on convdata/typedef) lets both use it without a `mesaload`<->`monload` cycle, and avoids duplicating the quantizers |
 
 ## Session State
 
 _Updated at the end of each session or major phase._
 
-**Last updated**: 2026-08-27
+**Last updated**: 2026-09-09
+**Status (2026-09-09)**: Added the MONASH `seq` reader (task 10) and extracted
+the shared record builders into a new `convbuild` module. `monload.f90` reads
+the gfortran sequential-unformatted seq stream (layout per `seqdump.f90`) into
+convtype records: mass shells from `omx`, convection zones from `kcvtn`, an
+approximate `epsnuc` layer from `dL/dm`, and curated colour fields
+(Temperature/Density/Pressure/Luminosity + 7 reaction rates) via two-pass
+range-then-quantize. `convbuild` now owns `build_zones`/`build_energy`/
+`build_field_layer`, the colour-field registry helpers, `alloc_empty_layers`
+and the shared constants, so `mesaload` and `monload` share them without a
+module cycle; `load_convection` dispatches seq paths (`seq.` prefix or `.seq`
+suffix) to `loadmon`. Verified on a 40-record fixture (models 1-40, Temperature
+8e3-2.3e7 K) with `color temperature`/`color epsnuc` rendering, and `.cnv`
+(loadconv, 10363 models) + `convdump` show no regression. Task 11 (model-density
+strip, ported from keppy `ModelsLegend`) is next, delegated to a codex-swarm.
+HEAD will advance past `2fe08d3`.
+
 **Status (2026-08-27)**: Added arbitrary column colour fields (task 9). Any
 non-structural source column is registered as a generic colour field in a shared
 `convdata` registry (`field_names/vmin/vmax/log` + a per-record `fld()` of

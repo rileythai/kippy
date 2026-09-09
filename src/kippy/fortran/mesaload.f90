@@ -27,38 +27,21 @@ module mesaload
    use typedef, only: &
       int32, int64, real64
    use convdata, only: &
-      convtype, fieldlayer, data, &
-      nuc_kind, idx_kind, nuc_kind_len, idx_kind_len, &
-      FIELD_NBINS, nfields, field_names, field_vmin, field_vmax, field_log
+      convtype, data, nuc_kind_len, idx_kind_len, field_names
+   use convbuild, only: &
+      SOLMASS, SOLRAD, YR, EPS_BASE, GROW_FAC, REC_NVERS, &
+      build_zones, build_energy, build_field_layer, alloc_empty_layers, &
+      reset_field_registry, update_field_range, finalize_field_log
    use convload, only: &
       loadconv, sort_models
+   use monload, only: &
+      loadmon
 !$ use omp_lib, only: omp_get_max_threads
 
    implicit none (type, external)
    private
 
    public :: loadmesa, load_convection
-
-   ! physical constants
-   ! TODO: move to separate module
-   real(real64), parameter :: SOLMASS = 1.9892d33   ! g
-   real(real64), parameter :: SOLRAD = 6.9599d10   ! cm
-   real(real64), parameter :: YR = 31556952.d0  ! s
-
-   ! floor fed to log10 when log-binning a field so non-positive samples do
-   ! not trap; well below any physical value that would be log-binned
-   real(real64), parameter :: LOGTINY = 1.d-99
-
-   ! log10(erg/g/s) value mapped to energy level 1; cells below this floor
-   ! draw no energy band.  tunable -- higher hides weak burning.  the
-   ! colorbar labels level k as EPS_BASE + k - 1 (see kipp level_mins).
-   integer(int32), parameter :: EPS_BASE = 1
-
-   ! record version sentinel; the renderer ignores nvers once in memory
-   integer(int32), parameter :: MESA_NVERS = 10600
-
-   ! growth factor for the record array (matches convload cnv_fac)
-   real(real64), parameter :: GROW_FAC = 0.5d0*(sqrt(5.d0) + 1.d0)
 
    ! cap on the profile-read thread pool. profile parsing is memory-bandwidth
    ! bound: throughput will peak around 3-4 threads as the shared
@@ -89,7 +72,16 @@ contains
    subroutine load_convection(path, ifirst, ilast)
       character(len=*), intent(in) :: path
       integer(int32), intent(in) :: ifirst, ilast
+      integer(int32) :: slash
+      character(len=:), allocatable :: basename
       logical :: is_mesa
+      slash = index(trim(path), '/', back=.true.)
+      basename = path(slash + 1:len_trim(path))
+      if ((len_trim(basename) >= 4 .and. basename(1:4) == 'seq.') .or. &
+          has_suffix(basename, '.seq')) then
+         call loadmon(path, ifirst, ilast)
+         return
+      end if
       if (has_suffix(path, '.kipp')) then
          call loadkipp(path, ifirst, ilast)
          return
@@ -556,102 +548,6 @@ contains
       end select
    end function is_structural_kipp
 
-   ! (re)allocate the shared colour-field registry for nf fields, with ranges
-   ! reset to be grown by update_field_range.
-   subroutine reset_field_registry(nf)
-      integer(int32), intent(in) :: nf
-      if (allocated(field_names)) deallocate (field_names)
-      if (allocated(field_vmin)) deallocate (field_vmin)
-      if (allocated(field_vmax)) deallocate (field_vmax)
-      if (allocated(field_log)) deallocate (field_log)
-      nfields = nf
-      allocate (field_names(nf), field_vmin(nf), field_vmax(nf), field_log(nf))
-      if (nf > 0) then
-         field_names = ''
-         field_vmin = huge(1.d0)
-         field_vmax = -huge(1.d0)
-         field_log = .false.
-      end if
-   end subroutine reset_field_registry
-
-   ! widen field f's running [vmin, vmax] with one finite sample
-   subroutine update_field_range(f, v)
-      integer(int32), intent(in) :: f
-      real(real64), intent(in) :: v
-      if (v /= v) return                 ! skip NaN
-      if (abs(v) > huge(1.d0)) return     ! skip +/-Inf
-      if (v < field_vmin(f)) field_vmin(f) = v
-      if (v > field_vmax(f)) field_vmax(f) = v
-   end subroutine update_field_range
-
-   ! choose log binning for a field whose range is strictly positive and spans
-   ! more than two decades (temperature, density, luminosity); linear otherwise
-   subroutine finalize_field_log(f)
-      integer(int32), intent(in) :: f
-      logical :: wide
-      if (field_vmax(f) < field_vmin(f)) then     ! never sampled
-         field_vmin(f) = 0.d0; field_vmax(f) = 1.d0
-      end if
-      wide = (field_vmin(f) > 0.d0) .and. &
-             (field_vmax(f) > field_vmin(f)*1.d2)
-      field_log(f) = wide
-   end subroutine finalize_field_log
-
-   ! contour bin (1..FIELD_NBINS) of a value under field f's range and scale
-   pure function field_level(v, f) result(lev)
-      real(real64), intent(in) :: v
-      integer(int32), intent(in) :: f
-      integer(int32) :: lev
-      real(real64) :: a, b, x, t
-      a = field_vmin(f); b = field_vmax(f)
-      if (field_log(f)) then
-         a = log10(max(a, LOGTINY))
-         b = log10(max(b, LOGTINY))
-         x = log10(max(v, LOGTINY))
-      else
-         x = v
-      end if
-      if (b <= a) then
-         lev = 1
-         return
-      end if
-      t = (x - a)/(b - a)
-      lev = 1 + int(t*real(FIELD_NBINS, real64))
-      if (lev < 1) lev = 1
-      if (lev > FIELD_NBINS) lev = FIELD_NBINS
-   end function field_level
-
-   ! run-length compress a per-cell field (center -> surface) into a
-   ! (level, coordinate-index) step function, the same shape build_energy
-   ! produces.  every cell maps to a valid bin, so the star tiles fully.
-   subroutine build_field_layer(raw, nz, f, out)
-      real(real64), intent(in) :: raw(:)
-      integer(int32), intent(in) :: nz, f
-      type(fieldlayer), intent(out) :: out
-      integer(int32) :: k, lev, prev, n
-      integer(int32), allocatable :: lv(:), ix(:)
-
-      allocate (lv(nz), ix(nz))
-      n = 0
-      prev = -huge(1_int32)
-      do k = 1, nz
-         lev = field_level(raw(k), f)
-         if (lev /= prev) then
-            n = n + 1
-            lv(n) = lev
-            ix(n) = k
-            prev = lev
-         end if
-      end do
-      out%n = n
-      allocate (out%lev(n), out%idx(n))
-      if (n > 0) then
-         out%lev = int(lv(1:n), nuc_kind)
-         out%idx = int(ix(1:n), idx_kind)
-      end if
-      deallocate (lv, ix)
-   end subroutine build_field_layer
-
    ! turn one model's accumulated zones (surface -> center as read) into a
    ! convtype record appended to recs, growing recs as needed.  a run out of
    ! [ifirst, ilast] or with no zones produces nothing.
@@ -705,7 +601,7 @@ contains
       real(real64), intent(in) :: xm(:), rn(:), eps(:)
       integer(int32), intent(in) :: mt(:)
 
-      cnv%nvers = MESA_NVERS
+      cnv%nvers = REC_NVERS
       cnv%ncyc = model
       cnv%ncoord = nz
       cnv%timesec = age*YR
@@ -723,7 +619,7 @@ contains
       cnv%xmcoord = xm
       cnv%rncoord = rn
 
-      call build_zones(mt, nz, cnv)
+      call build_mesa_zones(mt, nz, cnv)
       call build_energy(eps, nz, cnv%nnuc, cnv%nuc, cnv%inuc)
 
       cnv%nneu = 0
@@ -963,7 +859,7 @@ contains
       end do
       deallocate (massf, logrf, mtf, epsf, enuf, hv, row, fldf)
 
-      cnv%nvers = MESA_NVERS
+      cnv%nvers = REC_NVERS
       cnv%ncoord = nz
       cnv%dt = 0.d0
       cnv%toffset = 0.d0
@@ -979,7 +875,7 @@ contains
       cnv%xmcoord = xm
       cnv%rncoord = rn
 
-      call build_zones(mt, nz, cnv)
+      call build_mesa_zones(mt, nz, cnv)
       call build_energy(eps, nz, cnv%nnuc, cnv%nuc, cnv%inuc)
       call build_energy(enu, nz, cnv%nneu, cnv%neu, cnv%ineu)
 
@@ -1002,101 +898,19 @@ contains
       deallocate (xm, rn, mt, eps, enu)
    end subroutine read_profile
 
-   ! run-length compress the mixing_type column (all cells, radiative runs
-   ! included so zones tile the whole star) into yzip type chars + iconv outer
-   ! boundary indices, exactly as the kepler reader presents them.
-   subroutine build_zones(mt, nz, cnv)
+   subroutine build_mesa_zones(mt, nz, cnv)
       integer(int32), intent(in) :: mt(:), nz
       type(convtype), intent(inout) :: cnv
-      integer(int32) :: k, nconv
-      character(len=1), allocatable :: yz(:)
-      integer(int32), allocatable :: ic(:)
+      integer(int32) :: k
+      character(len=1), allocatable :: zones(:)
 
-      allocate (yz(nz), ic(nz))
-      nconv = 0
+      allocate (zones(nz))
       do k = 1, nz
-         if (k == nz) then
-            nconv = nconv + 1
-            yz(nconv) = type_char(mt(k))
-            ic(nconv) = k
-         else if (mt(k) /= mt(k + 1)) then
-            nconv = nconv + 1
-            yz(nconv) = type_char(mt(k))
-            ic(nconv) = k
-         end if
+         zones(k) = type_char(mt(k))
       end do
-
-      cnv%nconv = nconv
-      allocate (cnv%yzip(nconv), cnv%iconv(nconv))
-      cnv%yzip = yz(1:nconv)
-      cnv%iconv = int(ic(1:nconv), idx_kind)
-      deallocate (yz, ic)
-   end subroutine build_zones
-
-   ! quantize a per-cell energy field (erg/g/s, ascending center->surface)
-   ! into the integer level step function kipp draw_energy consumes: a
-   ! (level, coordinate-index) pair at every cell where the level changes.
-   ! sign is +gain / -loss; cells below the EPS_BASE floor map to level 0.
-   subroutine build_energy(f, nz, n, vals, idxs)
-      real(real64), intent(in) :: f(:)
-      integer(int32), intent(in) :: nz
-      integer(int32), intent(out) :: n
-      integer(nuc_kind), allocatable, intent(out) :: vals(:)
-      integer(idx_kind), allocatable, intent(out) :: idxs(:)
-      integer(int32) :: k, lev, prev
-      integer(int32), allocatable :: lv(:), ix(:)
-
-      allocate (lv(nz), ix(nz))
-      n = 0
-      prev = huge(1_int32)     ! forces a pair at the first cell
-      do k = 1, nz
-         lev = level_of(f(k))
-         if (lev /= prev) then
-            n = n + 1
-            lv(n) = lev
-            ix(n) = k
-            prev = lev
-         end if
-      end do
-
-      allocate (vals(n), idxs(n))
-      if (n > 0) then
-         vals = int(lv(1:n), nuc_kind)
-         idxs = int(ix(1:n), idx_kind)
-      end if
-      deallocate (lv, ix)
-   end subroutine build_energy
-
-   ! signed integer contour level of an energy value: nint(log10|f|) shifted
-   ! so EPS_BASE is level 1, negative for losses, 0 below the floor
-   pure function level_of(f) result(lev)
-      real(real64), intent(in) :: f
-      integer(int32) :: lev
-      real(real64) :: a
-      a = abs(f)
-      if (a <= 0.d0) then
-         lev = 0
-         return
-      end if
-      lev = nint(log10(a)) - EPS_BASE + 1
-      if (lev < 1) then
-         lev = 0
-      else if (f < 0.d0) then
-         lev = -lev
-      end if
-   end function level_of
-
-   ! allocate the layer-1 and derivative / advection arrays at size zero so
-   ! size() and unconditional loops in the renderer are safe
-   subroutine alloc_empty_layers(cnv)
-      type(convtype), intent(inout) :: cnv
-      cnv%nnuk = 0; cnv%nnucd = 0; cnv%nnukd = 0; cnv%nneud = 0
-      allocate (cnv%nuk(0), cnv%inuk(0))
-      allocate (cnv%nucd(0), cnv%inucd(0))
-      allocate (cnv%nukd(0), cnv%inukd(0))
-      allocate (cnv%neud(0), cnv%ineud(0))
-      allocate (cnv%iadv(0), cnv%dmadv(0), cnv%dvadv(0))
-   end subroutine alloc_empty_layers
+      call build_zones(zones, nz, cnv)
+      deallocate (zones)
+   end subroutine build_mesa_zones
 
    ! MESA mixing_types (const_def.f90) -> kipp convection type char
    ! (kipp type_of): 0 none, 1 conv, 2 overshoot, 3 semiconv, 4 thermohaline,
