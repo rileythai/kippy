@@ -96,7 +96,7 @@ module kipp
       type(band_t), allocatable :: b(:)
    end type bandset_t
 
-   ! One outline polyline along a region boundary, in data coordinates:
+   ! One outline polygon line along a region boundary, in data coordinates:
    ! x is a strip-edge index into xedge, y a cgs mass/radius coordinate.
    type :: chain_t
       integer(int32) :: n = 0
