@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0
       - run: uvx --from 'zensical>=0.0.68' zensical build --clean
       - uses: actions/upload-pages-artifact@v5
         with:
