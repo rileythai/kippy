@@ -92,7 +92,8 @@ demo gif via raw.githubusercontent). Local cibuildwheel x86_64 wheel verified
 end to end in a clean container. Demo gif shrunk 32 MB -> 7.8 MB (`a9ea452`:
 full 807x614 resolution, 12 fps, duplicate frames dropped, global 128-colour
 palette, no dither; 32 colours shifted hatch/tick hues so was rejected); the
-old 32 MB blob stays in git history. Open: the PyPI/Pages setup steps in
+old 32 MB blob stays in git history. The gif is also export-ignored from the
+sdist (now 1.3 MB). Open: the PyPI/Pages setup steps in
 task 7 need the user.
 
 **Status (2026-10-06d)**: Licensed kippy LGPL-3.0-or-later (task 16): licence
