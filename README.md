@@ -1,17 +1,11 @@
 # kippy
 
-interactive kippenhahn diagram tool for MESA, KEPLER, and MONSTAR.
-
-## Executables
-
-- `convview` -- interactive Kippenhahn viewer (giza REPL, `/xw` window or PNG
-  snapshots when headless)
-- `convdump` -- headless reader diagnostic that prints first/last model stats
+An interactive Kippenhahn diagram tool for various stellar evolution codes, including [MESA](https://mesastar.org), KEPLER, and the MONASH stellar evolution code.
 
 ## Install
 
 The build uses [meson](https://mesonbuild.com/) / ninja via
-[meson-python](https://meson-python.readthedocs.io/) and compiles giza on first
+[meson-python](https://meson-python.readthedocs.io/) and compiles `giza` on first
 build, so a Fortran toolchain and giza's backends are required:
 
 - `gfortran`, `meson`, `ninja`

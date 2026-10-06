@@ -2,7 +2,7 @@
 
 ## Command line
 
-`convview` loads convection data, renders a Kippenhahn diagram, and provides a
+`convview` loads a convection data file, renders a Kippenhahn diagram, and provides a
 command prompt:
 
 ```text
@@ -19,19 +19,37 @@ convdump [path]
 Both commands use `convdata.cnv` in the current directory when `path` is
 omitted. Only the first command-line argument is used as the path.
 
-### Interactive and headless rendering
+When `DISPLAY` is non-empty, `convview` will open an interactive `/xw` window. It
+renders once and enters Cursor mode (see below) before showing the `kipp>` prompt. 
 
-When `DISPLAY` is non-empty, `convview` opens an interactive `/xw` window. It
-renders once and enters cursor mode before showing the `kipp>` prompt. Press
-`q` or Esc in the plot window to leave cursor mode and reach the prompt.
+Press `q` or `Esc` in the plot window to leave cursor mode and reach the prompt for REPL commands (see below).
 
-Without `DISPLAY`, `convview` uses the `/png` device. The initial render writes
-`convview.png`; each command that renders again replaces that file. Cursor mode
-is unavailable in this mode. Use `save` to write a separately named PNG or PDF.
+## Cursor mode
 
-Setting `KIPP_SCRIPT` to any non-empty value skips automatic entry into cursor
-mode when an interactive window is available. It also enables the `key` REPL
-command.
+Cursor actions use the mouse position in the plot window. Zoom and pan operate
+in the current linear or logarithmic window coordinates.
+
+| Key or mouse action | Effect |
+| --- | --- |
+| Left-click and drag | Select a rectangular x/y region and zoom to it. |
+| `x` | Select an x range between the current position and a second cursor event. |
+| `y` | Select a y range between the current position and a second cursor event. |
+| Scroll up, `z`, or `+` | Zoom in by a factor of two about the cursor. |
+| Scroll down, right-click, `Z`, or `-` | Zoom out by a factor of two about the cursor. |
+| Scroll left or `h` | Pan left by one quarter of the current x span. |
+| Scroll right or `l` | Pan right by one quarter of the current x shttps://www.cairographics.org/pan. |
+| `j` | Pan down by one quarter of the current y span. |
+| `k` | Pan up by one quarter of the current y span. |
+| Middle-click or `c` | Center the current view on the cursor without changing its span. |
+| `r`, `a`, or `0` | Restore automatic limits on both axes and render the full view. |
+| `s` | Save a numbered PNG snapshot named `convview_NNNN.png`. |
+| `p` | Copy a PNG snapshot to the system clipboard. |
+| `S` | Save a numbered PDF snapshot named `convview_NNNN.pdf`. |
+| `?` | Print cursor-mode help. |
+| `q` or Esc | Leave cursor mode and return to the REPL. |
+
+PNG and PDF snapshots share one counter, beginning at `0001`. During a range
+or rectangle selection, `q` or `Esc` cancels that selection.
 
 ## REPL commands
 
@@ -64,32 +82,20 @@ using `color <column>`. Friendly column aliases recognized by the renderer are
 or `L`; and `pressure` or `P`. Each alias selects the first corresponding
 canonical field present in the input.
 
-## Cursor mode
 
-Cursor actions use the mouse position in the plot window. Zoom and pan operate
-in the current linear or logarithmic window coordinates.
+# Headless rendering and scripting
 
-| Key or mouse action | Effect |
-| --- | --- |
-| Left-click and drag | Select a rectangular x/y region and zoom to it. |
-| `x` | Select an x range between the current position and a second cursor event. |
-| `y` | Select a y range between the current position and a second cursor event. |
-| Scroll up, `z`, or `+` | Zoom in by a factor of two about the cursor. |
-| Scroll down, right-click, `Z`, or `-` | Zoom out by a factor of two about the cursor. |
-| Scroll left or `h` | Pan left by one quarter of the current x span. |
-| Scroll right or `l` | Pan right by one quarter of the current x span. |
-| `j` | Pan down by one quarter of the current y span. |
-| `k` | Pan up by one quarter of the current y span. |
-| Middle-click or `c` | Center the current view on the cursor without changing its span. |
-| `r`, `a`, or `0` | Restore automatic limits on both axes and render the full view. |
-| `s` | Save a numbered PNG snapshot named `convview_NNNN.png`. |
-| `p` | Copy a PNG snapshot to the system clipboard. |
-| `S` | Save a numbered PDF snapshot named `convview_NNNN.pdf`. |
-| `?` | Print cursor-mode help. |
-| `q` or Esc | Leave cursor mode and return to the REPL. |
+To enable scripting, `kippy`'s core interface supports a headless rendering mode and scripted rendering.
 
-PNG and PDF snapshots share one counter, beginning at `0001`. During a range
-or rectangle selection, `q` or Esc cancels that selection.
+## Headless rendering
+When the `DISPLAY`, `convview` uses the `/png` device. The initial render writes
+`convview.png`; each command that renders again replaces that file. Cursor mode
+is unavailable in this mode. Use `save` to write a separately named PNG or PDF.
+
+Setting `KIPP_SCRIPT` to any non-empty value skips automatic entry into cursor
+mode when an interactive window is available. It also enables the `key` REPL
+command.
+
 
 ## Scripted rendering
 
