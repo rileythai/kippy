@@ -89,9 +89,11 @@ _Updated at the end of each session or major phase._
 **Status (2026-10-06e)**: Release prep for task 7 done locally: metadata/urls,
 sdist exclusions, wheel + docs CI, README synced with the docs index (badges,
 demo gif via raw.githubusercontent). Local cibuildwheel x86_64 wheel verified
-end to end in a clean container. Open: sdist is 33 MB because the tracked
-`docs/kippy_demo.gif` is 32 MB (also may exceed image-proxy limits on
-GitHub/PyPI READMEs); the PyPI/Pages setup steps in task 7 need the user.
+end to end in a clean container. Demo gif shrunk 32 MB -> 7.8 MB (`a9ea452`:
+full 807x614 resolution, 12 fps, duplicate frames dropped, global 128-colour
+palette, no dither; 32 colours shifted hatch/tick hues so was rejected); the
+old 32 MB blob stays in git history. Open: the PyPI/Pages setup steps in
+task 7 need the user.
 
 **Status (2026-10-06d)**: Licensed kippy LGPL-3.0-or-later (task 16): licence
 texts, PEP 639 metadata, per-file FSF headers, and removed leftover keppy /
