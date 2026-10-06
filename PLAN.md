@@ -29,6 +29,7 @@ a vendored giza submodule; Python drives the executables as subprocesses.
 | 10 | MONASH `seq` file reader (`monload.f90`) + shared `convbuild` module | done | Claude+codex-swarm | seq is a gfortran sequential-unformatted file, one record per model, layout per `seqdump.f90`; mass shells from `omx` (`m=mass*(1-omx)^3`, already center->surface, no reversal), convection from `kcvtn`, approximate `epsnuc` from `dL/dm`, curated colour fields (Temperature/Density/Pressure/Luminosity + 7 reaction rates) reconstructed with seqdump formulas via two-pass range-then-quantize; reader-agnostic builders extracted from `mesaload` into a new `convbuild` module so `mesaload`+`monload` share them without a module cycle; dispatched in `load_convection` on a `seq.` prefix or `.seq` suffix. Verified on a 40-record fixture (models 1-40, T range 8e3-2.3e7 K) + `.cnv`/`convdump` no regression |
 | 12 | Selectable colour-field colormap (`cmap`) | done | Claude | `colormap` in `kipp.f90` dispatches on `st%cmap` for both the field fill (`draw_field`) and its colorbar (`draw_field_colorbar`); default `teal` fades white -> teal-blue (0.09,0.42,0.67) like the epsnuc gain ramp, with `viridis` (perceptual approx, now split into `cmap_viridis`), `blue` (exact epsnuc gain ramp), and `gray`; colorbar tick text now picks black/white by strip luminance so it stays legible on the light-at-low teal ramp; REPL `cmap teal\|viridis\|blue\|gray` validated in `convview.f90`. Verified rendering all four on the 40-record seq fixture (log Temperature 3.91-7.37) |
 | 11 | Model-density strip (port keppy `ModelsLegend`) | done | Claude+codex-swarm | `draw_models` in `kipp.f90` draws one tick per visible model in the top margin at its x, tick height/width/colour scaled by the model-number decade magnitude (`mag`=trailing zeroes, `half`=intervening multiple of five, `lev=2*mag+half`, colour cycles black/red/green/blue by `mag`); its own top-margin viewport is restored to the plot viewport/window afterward so the cursor keeps mapping pixels to data; `models on\|off` REPL toggle in `convview.f90`; on by default. Verified by rendering the seq fixture (red taller ticks at models 10/20/30/40) |
+| 13 | PDF export (`S` key, `save <file>.pdf`) | done | Claude | `kipp_save` dispatches on the `.pdf` suffix to giza `/pdf` at a fixed one-column page (`PDF_WIDTH`=3.5 in, height = width/phi, 252x156 pt); giza sizes text as a fraction of page height, so a module `chs` (`PDF_CHS`=2, ~8.4 pt labels) scales every character height during the PDF render and the field-colorbar end-tick inset; `S` in cursor mode writes a numbered `<prefix>_NNNN.pdf` sharing the `s` counter. Verified on the seq fixture (Temperature + epsnuc) via REPL `save` and scripted `key S`; PNG path unchanged (chs=1). Hatch spacing/width (8 / 1.5 device units) are hard-coded in giza so they render as 8 pt / 1.5 pt in the PDF |
 
 ### Inherited from keppy
 
@@ -71,12 +72,20 @@ Record key decisions here as they are made. Append only — do not delete previo
 | 2026-09-09 | MONASH `seq` reader scope | minimal geometry only vs curated fields + derived epsnuc | Curated colour fields + derived epsnuc | seq exposes T/rho/P/L and the 7 reaction rates cheaply via seqdump's exact formulas; the default `color epsnuc` is derived from `dL/dm` (approximate: dL carries gravothermal terms, not pure nuclear) so the seq reader behaves like the .cnv/.kipp/MESA ones out of the box |
 | 2026-09-09 | colour-field colormap default | keep viridis vs a white->teal-blue ramp | Default `teal` (white->teal-blue 0.09,0.42,0.67), selectable via `cmap` | The single `colormap` choke point already drives both the field fill and its colorbar, so one dispatch on `st%cmap` switches both; default matches the epsnuc gain-ramp look expected for arbitrary columns. Alternatives (viridis/blue/gray) kept cheap and analytic; colorbar tick text switched to luminance-based black/white so labels stay legible when the ramp is light at the low end (teal), not just dark (viridis) |
 | 2026-09-09 | shared record builders | duplicate in `monload` vs keep in `mesaload` (module cycle) vs new module | New `convbuild` module | `mesaload` dispatch must call `loadmon`, and `monload` must reuse the energy/field/zone builders; a shared `convbuild` (depends only on convdata/typedef) lets both use it without a `mesaload`<->`monload` cycle, and avoids duplicating the quantizers |
+| 2026-10-06 | PDF page size | match the /xw window vs fixed publication size | Fixed one-column 3.5 in x 3.5/phi in, text scaled by 2 | A fixed size drops straight into a journal column; giza ties text to page height so the scale keeps ~8 pt labels, and the existing normalized margins still fit at that size |
 
 ## Session State
 
 _Updated at the end of each session or major phase._
 
-**Last updated**: 2026-09-09
+**Last updated**: 2026-10-06
+**Status (2026-10-06)**: Added PDF export (task 13). Shift+S in cursor mode and
+`save <file>.pdf` in the REPL write a fixed one-column golden-ratio PDF
+(3.5 in wide) with character heights scaled by `PDF_CHS` so labels stay ~8 pt.
+Verified on the seq fixture; PNG output unchanged. Known limit: giza hard-codes
+hatch spacing/line width in device units, so PDF hatching is bolder than on
+screen (would need a giza patch).
+
 **Status (2026-09-09c)**: Added a selectable colour-field colormap (task 12).
 `colormap` in `kipp.f90` now dispatches on `st%cmap` (the viridis table moved to
 a `cmap_viridis` helper), so both the field fill and its colorbar switch

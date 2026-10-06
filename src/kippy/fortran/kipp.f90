@@ -62,6 +62,12 @@ module kipp
 
    integer(int32) :: nsnap = 0     ! numbered snapshots from cursor mode
 
+   ! pdf saves use a fixed one-column page (golden ratio); giza text scales
+   ! with page height, so chs enlarges it to stay legible at that size
+   real(real64), parameter :: PDF_WIDTH = 3.5d0     ! inches
+   real(real64), parameter :: PDF_CHS = 2.0d0
+   real(real64) :: chs = 1.d0
+
    integer(int32) :: nmodels = 0
    real(real64), allocatable :: xval(:)    ! x coordinate per model (yr or ncyc)
    real(real64), allocatable :: xedge(:)   ! model strip edges (nmodels+1)
@@ -308,24 +314,38 @@ contains
       end if
    end subroutine kipp_render
 
-   ! One-off render to a named PNG, independent of the current device.
+   ! One-off render to a named PNG (or PDF for a .pdf name), independent of
+   ! the current device.
    subroutine kipp_save(name)
       character(len=*), intent(in) :: name
       character(len=64) :: pfx
+      character(len=4) :: ext
       integer :: id, n
       pfx = name
+      ext = '.png'
       n = len_trim(pfx)
       if (n > 4) then
-         if (pfx(n - 3:n) == '.png') pfx = pfx(1:n - 4)
+         if (pfx(n - 3:n) == '.png' .or. pfx(n - 3:n) == '.pdf') then
+            ext = pfx(n - 3:n)
+            pfx = pfx(1:n - 4)
+         end if
       end if
-      id = giza_open_device('/png', trim(pfx))
+      if (ext == '.pdf') then
+         id = giza_open_device_size('/pdf', trim(pfx), real(PDF_WIDTH), &
+                                    real(PDF_WIDTH*2.d0/(1.d0 + sqrt(5.d0))), giza_units_inches)
+         chs = PDF_CHS
+      else
+         id = giza_open_device('/png', trim(pfx))
+      end if
       if (id <= 0) then
-         print *, '[kipp] cannot open /png for ', trim(pfx)
+         print *, '[kipp] cannot open /'//ext(2:)//' for ', trim(pfx)
+         chs = 1.d0
          return
       end if
       call draw_scene()
       call giza_close_device()
-      print '(a)', '[kipp] saved '//trim(pfx)//'.png'
+      chs = 1.d0
+      print '(a)', '[kipp] saved '//trim(pfx)//ext
       ! re-select the interactive device if one is open
       if (st%interactive .and. st%devid > 0) call giza_select_device(st%devid)
    end subroutine kipp_save
@@ -448,6 +468,10 @@ contains
          nsnap = nsnap + 1
          write (snap, '(a,a,i4.4)') trim(st%prefix), '_', nsnap
          call kipp_save(trim(snap))
+      case ('S')                               ! numbered pdf snapshot
+         nsnap = nsnap + 1
+         write (snap, '(a,a,i4.4)') trim(st%prefix), '_', nsnap
+         call kipp_save(trim(snap)//'.pdf')
       case ('?')
          call cursor_help()
       case default
@@ -468,7 +492,7 @@ contains
       print '(a)', '  left-click       drag rectangle zoom     x / y  select x / y range'
       print '(a)', '  scroll / z / Z   zoom in / out           right-click  zoom out'
       print '(a)', '  h j k l          pan left down up right  middle-click / c  centre here'
-      print '(a)', '  r                reset to full view      s  save png snapshot'
+      print '(a)', '  r                reset to full view      s / S  save png / pdf snapshot'
       print '(a)', '  ?                this help               q / Esc  back to prompt'
    end subroutine cursor_help
 
@@ -676,6 +700,7 @@ contains
       ! an erase done before this point can be silently discarded and the
       ! frame composites over undefined pixmap memory (ghost artifacts)
       call giza_draw_background()
+      call giza_set_character_height(chs)
 
       ! Convection zones are always drawn (hatched, like convplot's hatch-only
       ! patches).
@@ -745,7 +770,7 @@ contains
       call giza_set_viewport(0.90d0, 0.99d0, 0.12d0, 0.96d0)
       call giza_set_window(0.d0, 1.d0, 0.d0, 1.d0)
       call giza_set_fill(1)
-      call giza_set_character_height(0.65d0)
+      call giza_set_character_height(0.65d0*chs)
 
       ! gain cells from the top; colours match draw_energy exactly
       do lev = 1, gmax
@@ -776,7 +801,7 @@ contains
       if (gmax > 0) call giza_ptext(0.60d0, 1.d0, 90.d0, 1.d0, 'GAIN')
       if (lmax > 0) call giza_ptext(0.60d0, 0.d0, 90.d0, 0.d0, 'LOSS')
       call giza_ptext(0.60d0, 0.5d0, 90.d0, 0.5d0, 'log(erg/g/s)')
-      call giza_set_character_height(1.d0)
+      call giza_set_character_height(chs)
    end subroutine draw_colorbar
 
    !---------------------------------------------------------------------
@@ -1651,7 +1676,7 @@ contains
       call giza_set_viewport(0.90d0, 0.99d0, 0.12d0, 0.96d0)
       call giza_set_window(0.d0, 1.d0, 0.d0, 1.d0)
       call giza_set_fill(1)
-      call giza_set_character_height(0.65d0)
+      call giza_set_character_height(0.65d0*chs)
 
       dy = 1.d0/real(FIELD_NBINS, real64)
       do lev = 1, FIELD_NBINS
@@ -1672,14 +1697,14 @@ contains
          call colormap(frac, r, g, b)
          call giza_set_colour_index(merge(0, 1, 0.299d0*r + 0.587d0*g + 0.114d0*b < 0.5d0))
          ! inset the end ticks so they clear the strip edges / plot frame
-         call giza_ptext(0.20d0, 0.03d0 + frac*0.94d0, 90.d0, 0.5d0, trim(txt))
+         call giza_ptext(0.20d0, 0.03d0*chs + frac*(1.d0 - 0.06d0*chs), 90.d0, 0.5d0, trim(txt))
       end do
 
       title = trim(field_names(f))
       if (field_log(f)) title = 'log '//trim(title)
       call giza_set_colour_index(1)
       call giza_ptext(0.65d0, 0.5d0, 90.d0, 0.5d0, trim(title))
-      call giza_set_character_height(1.d0)
+      call giza_set_character_height(chs)
    end subroutine draw_field_colorbar
 
    ! format the field value at fractional position frac in [0,1] up the strip

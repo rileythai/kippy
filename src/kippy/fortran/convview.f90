@@ -110,7 +110,7 @@ program convview
          if (len_trim(a1) > 0) then
             call kipp_save(trim(a1))
          else
-            print *, 'save <file.png>'
+            print *, 'save <file.png|file.pdf>'
          end if
       case ('key')
          ! scripted cursor-mode action; hidden from help, accepted only
@@ -186,7 +186,7 @@ contains
       print '(a)', '  cmap teal|viridis|blue|gray   (colour-field colormap)'
       print '(a)', '  models on|off'
       print '(a)', '  cursor (i)            interactive zoom/pan on the plot window'
-      print '(a)', '  reset   redraw   save <file.png>   help   quit'
+      print '(a)', '  reset   redraw   save <file.png|file.pdf>   help   quit'
    end subroutine help
 
 end program convview
