@@ -45,13 +45,13 @@ build-backend = "mesonpy"
 
 [dependency-groups]
 docs = ["zensical>=0.0.68; python_version >= '3.11'"]
-# build backend tools kept in the project venv so the meson-python editable
-# rebuild hook resolves a persistent ninja instead of a torn-down uv build env
+# build backend tools are kept in the project venv so the meson-python editable
+# rebuild hook resolves a persistent ninja path instead of a temporary uv build env
 dev = ["meson-python>=0.18.0", "meson>=1.1.0", "ninja"]
 
 [tool.uv]
-# build kippy against the venv tools above rather than an ephemeral isolated
-# env, otherwise the baked-in ninja path vanishes after install
+# this forces build against the venv tools above, rather than a temporary isolated
+# env. you can't use temps otherwise the ninja path vanishes after install
 no-build-isolation-package = ["kippy"]
 
 [tool.cibuildwheel]
