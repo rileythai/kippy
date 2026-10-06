@@ -19,6 +19,7 @@ requires = ["meson-python>=0.15.0", "meson>=1.1.0", "ninja"]
 build-backend = "mesonpy"
 
 [dependency-groups]
+docs = ["zensical>=0.0.68; python_version >= '3.11'"]
 # build backend tools kept in the project venv so the meson-python editable
 # rebuild hook resolves a persistent ninja instead of a torn-down uv build env
 dev = ["meson-python>=0.15.0", "meson>=1.1.0", "ninja"]
