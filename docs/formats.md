@@ -1,6 +1,6 @@
 # Input formats
 
-Kippy chooses a reader from the supplied path. The checks are ordered: a
+`kippy` chooses a reader from the supplied path. The checks are ordered: a
 basename beginning with `seq.` or ending with `.seq` selects MONASH, a path
 ending with `.kipp` selects the raw stream reader, and a path for which
 `<path>/profiles.index` exists selects MESA. Every other path is passed to the
