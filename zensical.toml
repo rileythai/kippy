@@ -1,0 +1,10 @@
+[project]
+site_name = "kippy"
+site_description = "Interactive Kippenhahn diagram viewer for stellar evolution data."
+nav = [
+  { "Home" = "index.md" },
+  { "Installation" = "install.md" },
+  { "Usage" = "usage.md" },
+  { "Input formats" = "formats.md" },
+  { "Python API" = "api.md" },
+]
