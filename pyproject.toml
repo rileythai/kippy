@@ -1,7 +1,7 @@
 [project]
 name = "kippy"
 version = "0.1.0"
-description = "A native Fortran/giza Kippenhahn viewer for KEPLER .cnv output"
+description = "Interactive Kippenhahn diagram viewer for MESA, KEPLER and MONASH stellar evolution output"
 readme = "README.md"
 license = "LGPL-3.0-or-later"
 license-files = ["COPYING", "COPYING.LESSER", "giza/COPYING", "giza/COPYING.LESSER"]
@@ -11,6 +11,29 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = []
+keywords = ["kippenhahn", "stellar evolution", "astrophysics", "mesa", "kepler", "visualization"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: X11 Applications",
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Fortran",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+
+[project.urls]
+Homepage = "https://kippy.rileythai.com"
+Documentation = "https://kippy.rileythai.com"
+Source = "https://github.com/rileythai/kippy"
+Issues = "https://github.com/rileythai/kippy/issues"
 
 [project.scripts]
 convview = "kippy._cli:convview"
@@ -30,3 +53,8 @@ dev = ["meson-python>=0.18.0", "meson>=1.1.0", "ninja"]
 # build kippy against the venv tools above rather than an ephemeral isolated
 # env, otherwise the baked-in ninja path vanishes after install
 no-build-isolation-package = ["kippy"]
+
+[tool.cibuildwheel]
+build = "cp*-manylinux_*"
+skip = "cp31?t-*"
+before-all = "dnf install -y cairo-devel libX11-devel freetype-devel"
