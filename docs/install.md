@@ -3,7 +3,7 @@
 ## Requirements
 
 kippy builds with Meson and Ninja through meson-python. Building the compiled
-Fortran core and vendored giza library requires:
+Fortran core and bundled giza library requires:
 
 - `gfortran`
 - `meson`

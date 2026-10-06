@@ -1,6 +1,23 @@
-! convdump.f90 -- diagnostic tool to load a .cnv via the keppy Fortran
-! reader and print first/last model summary stats.  Used to cross-check
-! the Fortran reader against the Python ConvData oracle.
+! kippy - Kippenhahn diagram viewer
+! Copyright (C) 2026 the kippy authors (see AUTHORS)
+!
+! This file is part of kippy.
+!
+! kippy is free software: you can redistribute it and/or modify
+! it under the terms of the GNU Lesser General Public License as
+! published by the Free Software Foundation, either version 3 of the
+! License, or (at your option) any later version.
+!
+! kippy is distributed in the hope that it will be useful, but WITHOUT
+! ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+! FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+! License for more details.
+!
+! You should have received a copy of the GNU Lesser General Public
+! License along with kippy. If not, see <https://www.gnu.org/licenses/>.
+
+! convdump.f90 -- diagnostic tool to load any supported input and print
+! first/last model summary stats.
 !
 ! Usage:  ./convdump [file.cnv]      (default: convdata.cnv)
 !

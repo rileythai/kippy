@@ -1,7 +1,25 @@
+! kippy - Kippenhahn diagram viewer
+! Copyright (C) 2026 the kippy authors (see AUTHORS)
+!
+! This file is part of kippy.
+!
+! kippy is free software: you can redistribute it and/or modify
+! it under the terms of the GNU Lesser General Public License as
+! published by the Free Software Foundation, either version 3 of the
+! License, or (at your option) any later version.
+!
+! kippy is distributed in the hope that it will be useful, but WITHOUT
+! ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+! FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+! License for more details.
+!
+! You should have received a copy of the GNU Lesser General Public
+! License along with kippy. If not, see <https://www.gnu.org/licenses/>.
+
 ! kipp.f90 -- Kippenhahn rendering library on top of giza
 !
-! Designed to read KEPLER .cnv convection data (via the vendored Fortran reader
-! typedef/convdata/convload) and renders a Kippenhahn diagram
+! Renders a Kippenhahn diagram from any input loaded by load_convection
+! (KEPLER .cnv, MESA profiles, .kipp streams, MONASH seq)
 module kipp
 
    use iso_c_binding, only: c_int
@@ -26,13 +44,13 @@ module kipp
              kipp_close, kipp_autoscale, kipp_rebuild, kipp_interact, &
              kipp_action, kipp_window_center, kipp_list_fields, st, nmodels
 
-   ! physical constants to match keppy.data.physconst.Kepler / YR
+   ! physical constants
    real(real64), parameter :: SOLMASS = 1.9892d33      ! g
    real(real64), parameter :: SOLRAD = 6.9599d10      ! cm
    real(real64), parameter :: YR = 31556952.d0    ! s (Gregorian year)
    real(real64), parameter :: LOGMIN = 1.d-99
 
-   ! convection-type codes (keppy.data.convdata.conv_types):
+   ! convection-type codes
    !   ' '=0 radiative  'N'=1 neutral  'O'=2 overshoot
    !   'S'=3 semiconv   'C'=4 convective 'T'=5 thermohaline
    ! giza colour indices assigned to each type (0 = radiative, not drawn):
@@ -247,7 +265,6 @@ contains
 
    !---------------------------------------------------------------------
    ! mass/radius coordinate at convection boundary k (0..nconv) of model i.
-   ! Mirrors ConvRecord mc/rc reconstruction (convdata.py:1608).
    pure function mbound(i, k) result(c)
       integer(int32), intent(in) :: i, k
       real(real64) :: c
@@ -875,9 +892,9 @@ contains
    end subroutine draw_models
 
    ! minimum log10 level values (gain, loss) for a layer, from the file
-   ! header.  Matches convdata.py minx[layer] = consecutive (gain, loss)
-   ! pairs per layer -- the historic KEPLER field names are misleading
-   ! (minloss is the nuc GAIN minimum).
+   ! header, read as consecutive (gain, loss) pairs per layer -- the
+   ! historic KEPLER field names are misleading (minloss is the nuc GAIN
+   ! minimum).
    subroutine level_mins(layer, gmin, lmin)
       integer(int32), intent(in)  :: layer
       integer(int32), intent(out) :: gmin, lmin
@@ -1883,8 +1900,8 @@ contains
       end do
    end subroutine scan_levels
 
-   ! Mass intervals of one model where the layer field reaches integer level L
-   ! -- ports extract_layer (convdata.py:67).  Returns m intervals in
+   ! Mass intervals of one model where the layer field reaches integer level L.
+   ! Returns m intervals in
    ! ivlo/ivhi (cgs coords) instead of drawing, so the band tracer can fill
    ! them as polygons.
    subroutine level_intervals(i, vals, idxs, n, L, ivlo, ivhi, m)

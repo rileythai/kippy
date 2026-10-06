@@ -9,11 +9,11 @@ output (and MESA profile directories), split out of
 [keppy](https://github.com/rileythai/keppy) as a standalone, pip-installable
 package.
 
-The plotting core is compiled Fortran (`kipp.f90`) linked against the vendored
+The plotting core is compiled Fortran (`kipp.f90`) linked against the bundled
 [giza](https://github.com/danieljprice/giza) plotting library (a git submodule).
 Python drives the compiled executables as subprocesses. Key areas:
 
-- **Reader**: vendored `.cnv` binary reader (`convload.f90`/`convdata.f90`/`typedef.f90`) plus a MESA profiles reader (`mesaload.f90`)
+- **Reader**: `.cnv` binary reader (`convload.f90`/`convdata.f90`/`typedef.f90`) plus a MESA profiles reader (`mesaload.f90`)
 - **Viewer core**: `kipp.f90` band tracer + giza rendering; `convview.f90` stdin REPL
 - **Build**: meson-python compiles the Fortran and builds the giza submodule on first build (`tools/build_giza.py`)
 - **Python API**: `kippy.view`/`kippy.dump` launchers + `convview`/`convdump` console scripts (`src/kippy/_cli.py`)

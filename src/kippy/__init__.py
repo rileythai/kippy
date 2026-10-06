@@ -1,3 +1,21 @@
+# kippy - Kippenhahn diagram viewer
+# Copyright (C) 2026 the kippy authors (see AUTHORS)
+#
+# This file is part of kippy.
+#
+# kippy is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# kippy is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+# License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with kippy. If not, see <https://www.gnu.org/licenses/>.
+
 """kippy -- a native Fortran/giza Kippenhahn viewer for KEPLER .cnv output
 
 the plotting core is compiled Fortran linked against giza. python drives the
