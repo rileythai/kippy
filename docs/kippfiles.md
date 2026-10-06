@@ -268,4 +268,4 @@ And the file `kipp/routines.inc` should be:
    end subroutine close_kipp_record
 ```
 
-An example of this implementation for `star/work/src/` is held at `github.com/rileythai/kippy`.
+An example of this implementation for `star/work/src/` is held at [github.com/rileythai/kippy:example/](https://github.com/rileythai/kippy/tree/main/example)
