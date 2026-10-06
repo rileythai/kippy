@@ -61,7 +61,7 @@ Where the file `kipp/params.inc` can be:
 ! you should really save n = 1 (all) steps for the best rendering.
 ! you can choose where you want the ctrl index via the ikipp_on variable below
 !
-! path is chosen from x_character_ctrl(1), else <log_directory>/profile.kipp.
+! path is chosen from x_character_ctrl(kipp_idx), else <log_directory>/profile.kipp.
 ! 12 real(dp) columns per cell, see write_kipp_record / open_kipp_record.
 
 ! change these for yourself!
