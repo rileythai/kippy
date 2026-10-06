@@ -4,6 +4,7 @@
 ! typedef/convdata/convload) and renders a Kippenhahn diagram
 module kipp
 
+   use iso_c_binding, only: c_int
    use typedef, only: int32, real64
    use convdata, only: data, fieldlayer, &
                        FIELD_NBINS, nfields, field_names, &
@@ -13,6 +14,13 @@ module kipp
 
    implicit none
    private
+
+   interface
+      function c_getpid() bind(C, name='getpid') result(pid)
+         import :: c_int
+         integer(c_int) :: pid
+      end function c_getpid
+   end interface
 
    public :: kipp_load, kipp_choose_device, kipp_render, kipp_save, &
              kipp_close, kipp_autoscale, kipp_rebuild, kipp_interact, &
@@ -418,7 +426,8 @@ contains
       real(real64) :: xa, ya, x2, y2
       character(len=1) :: ch2
       character(len=80) :: snap
-      integer :: ierr
+      character(len=512) :: cmd
+      integer :: ierr, exitstat, cmdstat, tmpunit
 
       done = .false.
       xa = x; ya = y
@@ -468,6 +477,24 @@ contains
          nsnap = nsnap + 1
          write (snap, '(a,a,i4.4)') trim(st%prefix), '_', nsnap
          call kipp_save(trim(snap))
+      case ('p')                               ! copy png to clipboard
+         write (snap, '(a,i0,a)') '/tmp/kippy-', c_getpid(), '-clip'
+         call kipp_save(trim(snap))
+         ! the forked clipboard owner must not hold our stdout/stderr: if
+         ! those are a pipe it dies when the pipe closes and the copy is lost
+         cmd = "{ wl-copy --type image/png < "//trim(snap)//".png || "// &
+               "xclip -selection clipboard -t image/png -i "//trim(snap)//".png; } "// &
+               ">/dev/null 2>&1"
+         exitstat = 1
+         cmdstat = 1
+         call execute_command_line(trim(cmd), wait=.true., exitstat=exitstat, cmdstat=cmdstat)
+         if (cmdstat == 0 .and. exitstat == 0) then
+            print '(a)', '[kipp] copied png to clipboard'
+         else
+            print '(a)', '[kipp] could not copy png: wl-copy and xclip missing or failed'
+         end if
+         open (newunit=tmpunit, file=trim(snap)//'.png', status='old', iostat=ierr)
+         if (ierr == 0) close (tmpunit, status='delete')
       case ('S')                               ! numbered pdf snapshot
          nsnap = nsnap + 1
          write (snap, '(a,a,i4.4)') trim(st%prefix), '_', nsnap
@@ -493,6 +520,7 @@ contains
       print '(a)', '  scroll / z / Z   zoom in / out           right-click  zoom out'
       print '(a)', '  h j k l          pan left down up right  middle-click / c  centre here'
       print '(a)', '  r                reset to full view      s / S  save png / pdf snapshot'
+      print '(a)', '  p                copy png to clipboard'
       print '(a)', '  ?                this help               q / Esc  back to prompt'
    end subroutine cursor_help
 

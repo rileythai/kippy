@@ -83,6 +83,7 @@ in the current linear or logarithmic window coordinates.
 | Middle-click or `c` | Center the current view on the cursor without changing its span. |
 | `r`, `a`, or `0` | Restore automatic limits on both axes and render the full view. |
 | `s` | Save a numbered PNG snapshot named `convview_NNNN.png`. |
+| `p` | Copy a PNG snapshot to the system clipboard. |
 | `S` | Save a numbered PDF snapshot named `convview_NNNN.pdf`. |
 | `?` | Print cursor-mode help. |
 | `q` or Esc | Leave cursor mode and return to the REPL. |
