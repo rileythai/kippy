@@ -95,6 +95,8 @@ palette, no dither; 32 colours shifted hatch/tick hues so was rejected); the
 old 32 MB blob stays in git history. The gif is also export-ignored from the
 sdist (now 1.3 MB). Docs CI pins `astral-sh/setup-uv@v10.2.0`: upstream
 publishes no floating major tags after v7, so `@v10` failed to resolve.
+Docs callouts use `!!! tip` admonitions; zensical does not render GitHub
+`> [!TIP]` alerts.
 Open: the PyPI/Pages setup steps in task 7 need the user.
 
 **Status (2026-10-06d)**: Licensed kippy LGPL-3.0-or-later (task 16): licence

@@ -10,9 +10,9 @@ This example is also available in the `example/` directory of the repository.
 
 Adding a hook to make `.kipp` files requires overrides to three routine pointers of `subroutine extras_controls` `src/run_star_extras.f90` of the standard `star/work` directory. You may already use these hooks for other science. Worry not, because the process is designed to be modular.
 
-> [!WARNING]
-> If use `include`'s as below, you will need to rebuild via `./clean` single time and `./mk` 
-> every time changes are made because the `make` system is not aware of changes to `*.inc` files.
+!!! warning
+    If use `include`'s as below, you will need to rebuild via `./clean` single time and `./mk` 
+    every time changes are made because the `make` system is not aware of changes to `*.inc` files.
 
 ```fortran
    subroutine extras_controls(id, ierr)
@@ -50,9 +50,9 @@ module run_star_extras
 
 Where the file `kipp/params.inc` can be:
 
-> [!TIP]
-> `kippy` works best when you output _every single model_ for plotting. This 
-> allows you to check for insufficient resolution in both space and time.
+!!! tip
+    `kippy` works best when you output _every single model_ for plotting. This 
+    allows you to check for insufficient resolution in both space and time.
 
 ```fortran
 ! "kipp" record (for Kippenhahn diagrams via kippy):
