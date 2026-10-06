@@ -6,6 +6,10 @@ ending with `.kipp` selects the raw stream reader, and a path for which
 `<path>/profiles.index` exists selects MESA. Every other path is passed to the
 KEPLER convection reader; the `.cnv` suffix itself is not checked.
 
+> [!TIP]
+> `kippy` works best when you output _every single model_ for plotting. This 
+> allows you to check for insufficient resolution in both space and time.
+
 | Format | Detected from the path | Convection source | Energy or epsnuc source | Colour fields available |
 | --- | --- | --- | --- | --- |
 | KEPLER `.cnv` | Fallback after the other checks | Native `yzip` and `iconv` zone records | Native nuclear, neutrino, and related energy layers | No generic source-column fields |
