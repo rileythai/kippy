@@ -31,6 +31,7 @@ a vendored giza submodule; Python drives the executables as subprocesses.
 | 14 | Zensical documentation site | done | Claude+codex-swarm | `cfce4f0`; `zensical.toml` + `docs/` (index, install, usage, formats, api), every REPL command / cursor key / reader claim checked against the Fortran; `docs` dependency group gated `python_version >= '3.11'` (zensical floor); local build only, no deploy until a remote exists. Found K27 overclaims: the Fortran `.cnv` reader handles record versions >= 10600 only |
 | 11 | Model-density strip (port keppy `ModelsLegend`) | done | Claude+codex-swarm | `draw_models` in `kipp.f90` draws one tick per visible model in the top margin at its x, tick height/width/colour scaled by the model-number decade magnitude (`mag`=trailing zeroes, `half`=intervening multiple of five, `lev=2*mag+half`, colour cycles black/red/green/blue by `mag`); its own top-margin viewport is restored to the plot viewport/window afterward so the cursor keeps mapping pixels to data; `models on\|off` REPL toggle in `convview.f90`; on by default. Verified by rendering the seq fixture (red taller ticks at models 10/20/30/40) |
 | 13 | PDF export (`S` key, `save <file>.pdf`) | done | Claude | `kipp_save` dispatches on the `.pdf` suffix to giza `/pdf` at a fixed one-column page (`PDF_WIDTH`=3.5 in, height = width/phi, 252x156 pt); giza sizes text as a fraction of page height, so a module `chs` (`PDF_CHS`=2, ~8.4 pt labels) scales every character height during the PDF render and the field-colorbar end-tick inset; `S` in cursor mode writes a numbered `<prefix>_NNNN.pdf` sharing the `s` counter. Verified on the seq fixture (Temperature + epsnuc) via REPL `save` and scripted `key S`; PNG path unchanged (chs=1). Hatch spacing/width (8 / 1.5 device units) are hard-coded in giza so they render as 8 pt / 1.5 pt in the PDF |
+| 15 | Copy PNG to clipboard (`p` key) | done | Claude+codex-swarm | `p` in cursor mode renders via `kipp_save` to `/tmp/kippy-<pid>-clip.png`, pipes it to `wl-copy --type image/png`, falls back to `xclip -selection clipboard`, then deletes the temp file; does not bump the `s`/`S` counter. The copy's stdout/stderr go to /dev/null because the forked clipboard owner dies with a captured pipe and the clipboard reverts. Verified with `.scratch/verify_clip.sh` (`wl-paste` returns an 800x600 PNG) and the no-display failure message |
 
 ### Inherited from keppy
 
@@ -81,6 +82,11 @@ Record key decisions here as they are made. Append only — do not delete previo
 _Updated at the end of each session or major phase._
 
 **Last updated**: 2026-10-06
+**Status (2026-10-06c)**: Added clipboard PNG copy (task 15) via a one-worker
+codex-swarm, then simplified its temp-dir handling and fixed the clipboard
+owner dying on a captured stdout pipe. Verified on Wayland (wl-copy); the xclip
+fallback is untested on a real X11 session.
+
 **Status (2026-10-06b)**: Added the Zensical docs site (task 14) via codex-swarm, with `mise run docs:serve` / `docs:build` tasks in `mise.toml`,
 then fact-checked every page against the sources. Build with
 `uvx --from 'zensical>=0.0.68' zensical build` (output `site/`, ignored).
