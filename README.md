@@ -1,12 +1,6 @@
 # kippy
 
-A native Fortran/giza Kippenhahn viewer for KEPLER `.cnv` convection output,
-split out of [keppy](https://github.com/rileythai/keppy) as a standalone,
-pip-installable package.
-
-The plotting core is compiled Fortran (`kipp.f90`) linked against the vendored
-[giza](https://github.com/danieljprice/giza) plotting library (a git
-submodule). Python drives the compiled executables as subprocesses.
+interactive kippenhahn diagram tool for MESA, KEPLER, and MONSTAR.
 
 ## Executables
 
@@ -35,6 +29,11 @@ If you already cloned without `--recurse-submodules`:
 
 ```bash
 git submodule update --init --recursive
+```
+
+You may need to force `uv` to build it in isolation.
+```bash
+uv pip install --no-build-isolation --force-reinstall -e ~/projects/kippy
 ```
 
 ## Usage
