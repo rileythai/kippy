@@ -1,0 +1,7 @@
+[tasks."docs:serve"]
+description = "preview the docs site locally"
+run = "uvx --from 'zensical>=0.0.68' zensical serve"
+
+[tasks."docs:build"]
+description = "build the static docs site into site/"
+run = "uvx --from 'zensical>=0.0.68' zensical build"

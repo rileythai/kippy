@@ -81,7 +81,7 @@ Record key decisions here as they are made. Append only — do not delete previo
 _Updated at the end of each session or major phase._
 
 **Last updated**: 2026-10-06
-**Status (2026-10-06b)**: Added the Zensical docs site (task 14) via codex-swarm,
+**Status (2026-10-06b)**: Added the Zensical docs site (task 14) via codex-swarm, with `mise run docs:serve` / `docs:build` tasks in `mise.toml`,
 then fact-checked every page against the sources. Build with
 `uvx --from 'zensical>=0.0.68' zensical build` (output `site/`, ignored).
 Remaining PyPI (task 7) gaps: no LICENSE file or `license` field, no

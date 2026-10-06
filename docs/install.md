@@ -62,3 +62,6 @@ Build the static site into `site/`:
 ```bash
 uvx --from 'zensical>=0.0.68' zensical build
 ```
+
+With [mise](https://mise.jdx.dev/), the same commands are `mise run docs:serve`
+and `mise run docs:build`.
