@@ -1,6 +1,21 @@
 # Installation
 
-## Requirements
+## From PyPI
+
+kippy runs on Linux. Pre-built wheels for x86_64 and aarch64 bundle giza and
+its cairo and gfortran runtime libraries:
+
+```bash
+pip install kippy
+```
+
+The wheels expect the system X11 libraries (`libX11`, `libXext`, `libXrender`)
+and `libexpat`, which desktop Linux installs already provide. Without a
+matching wheel, pip builds from the sdist, which needs the requirements below.
+
+## Building from source
+
+### Requirements
 
 kippy builds with Meson and Ninja through meson-python. Building the compiled
 Fortran core and bundled giza library requires:
@@ -10,12 +25,12 @@ Fortran core and bundled giza library requires:
 - `ninja`
 - development packages for cairo, libx11, and freetype2
 
-## Clone the repository
+### Clone the repository
 
 Clone kippy with its submodules:
 
 ```bash
-git clone --recurse-submodules <url> kippy
+git clone --recurse-submodules https://github.com/rileythai/kippy
 cd kippy
 ```
 
@@ -25,7 +40,7 @@ If the repository was cloned without submodules, initialize them separately:
 git submodule update --init --recursive
 ```
 
-## Install kippy
+### Install kippy
 
 Install from the repository root:
 
