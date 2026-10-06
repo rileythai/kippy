@@ -1,6 +1,9 @@
 [project]
 site_name = "kippy"
-site_description = "Interactive Kippenhahn diagram viewer for stellar evolution data."
+site_description = "Interactive Kippenhahn diagram viewer for MESA, KEPLER and MONASH stellar evolution output."
+site_url = "https://kippy.rileythai.com/"
+repo_url = "https://github.com/rileythai/kippy"
+repo_name = "rileythai/kippy"
 nav = [
   { "Home" = "index.md" },
   { "Installation" = "install.md" },
