@@ -13,6 +13,9 @@ KEPLER convection reader; the `.cnv` suffix itself is not checked.
 | Raw `.kipp` stream | Path ends with `.kipp` | The stream's mixing column | One eps column supplies the net energy layer | Every named non-structural column in the `.hdr` sidecar |
 | MONASH `seq` | Basename begins with `seq.` or ends with `.seq` | `kcvtn` | Approximate epsnuc from `dL/dm` | Temperature, density, pressure, luminosity, and seven reaction rates |
 
+> [!NOTE]
+> The MONASH stellar evolution code and KEPLER are both closed-source codes.
+
 ## KEPLER `.cnv`
 
 The KEPLER reader consumes the convection zones, mass and radius coordinates,
