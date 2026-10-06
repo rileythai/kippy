@@ -3,6 +3,8 @@ name = "kippy"
 version = "0.1.0"
 description = "A native Fortran/giza Kippenhahn viewer for KEPLER .cnv output"
 readme = "README.md"
+license = "LGPL-3.0-or-later"
+license-files = ["COPYING", "COPYING.LESSER", "giza/COPYING", "giza/COPYING.LESSER"]
 authors = [
     { name = "Riley Thai", email = "riley.thai@monash.edu" },
     { name = "Alexander Heger", email = "alexander.heger@monash.edu" },
@@ -15,14 +17,14 @@ convview = "kippy._cli:convview"
 convdump = "kippy._cli:convdump"
 
 [build-system]
-requires = ["meson-python>=0.15.0", "meson>=1.1.0", "ninja"]
+requires = ["meson-python>=0.18.0", "meson>=1.1.0", "ninja"]
 build-backend = "mesonpy"
 
 [dependency-groups]
 docs = ["zensical>=0.0.68; python_version >= '3.11'"]
 # build backend tools kept in the project venv so the meson-python editable
 # rebuild hook resolves a persistent ninja instead of a torn-down uv build env
-dev = ["meson-python>=0.15.0", "meson>=1.1.0", "ninja"]
+dev = ["meson-python>=0.18.0", "meson>=1.1.0", "ninja"]
 
 [tool.uv]
 # build kippy against the venv tools above rather than an ephemeral isolated
