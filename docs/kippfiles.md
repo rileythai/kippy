@@ -2,11 +2,17 @@
 
 ## Introduction
 
-When using `kippy` with `MESA`, it is generally optimal for both your disk space and file count to instead dump the relevant quantities into Fortran binary over the native ASCII formats of `profile` files. For this reason, described below are a set of routines to make the `.kipp` files that `kippy` expects, and an example/tutorial for their implementation.
+When using `kippy` with `MESA`, it is generally optimal for both disk space and file count to instead dump the relevant quantities into Fortran binary over the native ASCII formats of `profile` files. For this reason, described below are a set of routines to make the `.kipp` files that `kippy` expects, and an example/tutorial for their implementation.
+
+This example is also available in the `example/` directory of the repository.
 
 ## Implementation
 
 Adding a hook to make `.kipp` files requires overrides to three routine pointers of `subroutine extras_controls` `src/run_star_extras.f90` of the standard `star/work` directory. You may already use these hooks for other science. Worry not, because the process is designed to be modular.
+
+> [!WARNING]
+> If use `include`'s as below, you will need to rebuild via `./clean` single time and `./mk` 
+> every time changes are made because the `make` system is not aware of changes to `*.inc` files.
 
 ```fortran
    subroutine extras_controls(id, ierr)
