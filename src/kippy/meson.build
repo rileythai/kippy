@@ -1,13 +1,31 @@
+# kippy - Kippenhahn diagram viewer
+# Copyright (C) 2026 the kippy authors (see AUTHORS)
+#
+# This file is part of kippy.
+#
+# kippy is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# kippy is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+# License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with kippy. If not, see <https://www.gnu.org/licenses/>.
+
 # kippy native build
 #
-# builds the vendored giza plotting library (autotools, via tools/build_giza.py)
+# builds the giza plotting library submodule (autotools, via tools/build_giza.py)
 # then compiles the kippenhahn viewer executables against it. the executables
 # and the giza shared library install side by side under kippy/bin so an
 # $ORIGIN rpath resolves libgiza at runtime.
 
 bindir = py.get_install_dir() / 'kippy' / 'bin'
 
-# --- vendored giza (autotools) staged into the meson build dir ---
+# --- giza submodule (autotools) staged into the meson build dir ---
 giza = custom_target(
   'giza',
   output: ['libgiza.so.2.0.0', 'libgiza.so.2', 'libgiza.so', 'giza.mod', 'giza-fortran.o'],
@@ -31,7 +49,7 @@ fflags = ['-ffree-line-length-none', '-I' + meson.current_build_dir()]
 # dependency adds the compile and link flags for the active compiler
 omp = dependency('openmp')
 
-# --- vendored keppy .cnv reader ---
+# --- input readers (.cnv, MESA, .kipp, seq) ---
 reader_lib = static_library(
   'kipp_reader',
   files('fortran/typedef.f90', 'fortran/convdata.f90', 'fortran/convload.f90', 'fortran/convbuild.f90', 'fortran/mesaload.f90', 'fortran/monload.f90'),

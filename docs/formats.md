@@ -22,9 +22,8 @@ plot. The reader does not register generic source columns as selectable colour
 fields.
 
 The Fortran reader supports record versions 10600 through 10699 and record
-versions 10700 and later. Versions below 10600 are rejected with an error that
-directs the user to the Python `ConvData` reader. In particular, the Fortran
-reader does not support record versions 10400 or 10500.
+versions 10700 and later. Versions below 10600, including 10400 and 10500, are
+rejected with an error.
 
 ## MESA profiles directory
 
@@ -43,7 +42,7 @@ Only columns present in the run are registered.
 
 ## Raw `.kipp` binary stream
 
-A `.kipp` file is a contiguous little-endian float64 cell dump. Cells are
+A `.kipp` file is a custom file contiguous little-endian float64 cell dump. Cells are
 grouped by monotonically increasing model number, with one row per zone. The
 sidecar header defines the column count and column names, including the model,
 age, mass, radius, mixing, and single eps columns required to build the plot.

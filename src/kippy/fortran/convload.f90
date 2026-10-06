@@ -1,3 +1,21 @@
+! kippy - Kippenhahn diagram viewer
+! Copyright (C) 2026 the kippy authors (see AUTHORS)
+!
+! This file is part of kippy.
+!
+! kippy is free software: you can redistribute it and/or modify
+! it under the terms of the GNU Lesser General Public License as
+! published by the Free Software Foundation, either version 3 of the
+! License, or (at your option) any later version.
+!
+! kippy is distributed in the hope that it will be useful, but WITHOUT
+! ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+! FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+! License for more details.
+!
+! You should have received a copy of the GNU Lesser General Public
+! License along with kippy. If not, see <https://www.gnu.org/licenses/>.
+
 module convload
 
   use typedef, only: &
@@ -96,8 +114,7 @@ contains
   ! kepler appends records when a run is restarted from an earlier dump,
   ! so a file can contain overlapping model ranges (model number and time
   ! jump backwards mid-file).  keep only the last record per model number,
-  ! in ascending model order, mirroring the python reader
-  ! (ConvData._sort_models).  downstream consumers (band tracing, strip
+  ! in ascending model order.  downstream consumers (band tracing, strip
   ! edges, bisection) rely on the record sequence increasing strictly.
   subroutine sort_models()
 
@@ -177,13 +194,12 @@ contains
 
 
   ! Peek the record version and dispatch to the matching decoder.
-  ! Kept in sync with the Python reader (ConvData._load_10400):
+  ! Supported layouts:
   !   * versions 10600-10699 share one record layout (aw/anglt 3-vectors,
   !     ladv read after rncoord, no toffset)
   !   * version 10700+ adds toffset (after dt) and moves ladv into the early
   !     header (after ncoord, before idx_kind_len/nuc_kind_len)
-  ! Versions < 10600 are not ported here yet (no fixtures); use the Python
-  ! reader for those.
+  ! Versions < 10600 are not supported (no fixtures).
   function loadconv_record(iunit) result(cnv)
 
     use typedef, only: &
@@ -216,7 +232,7 @@ contains
        cnv = loadconv_10600(iunit)
     else
        print*, '[loadconv_record] unsupported record version', nvers
-       error stop '[loadconv_record] record version < 10600 not ported to the Fortran reader; use the Python ConvData reader'
+       error stop '[loadconv_record] record version < 10600 not supported'
     endif
 
   end function loadconv_record
