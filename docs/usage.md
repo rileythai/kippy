@@ -37,7 +37,7 @@ in the current linear or logarithmic window coordinates.
 | Scroll up, `z`, or `+` | Zoom in by a factor of two about the cursor. |
 | Scroll down, right-click, `Z`, or `-` | Zoom out by a factor of two about the cursor. |
 | Scroll left or `h` | Pan left by one quarter of the current x span. |
-| Scroll right or `l` | Pan right by one quarter of the current x shttps://www.cairographics.org/pan. |
+| Scroll right or `l` | Pan right by one quarter of the current x span. |
 | `j` | Pan down by one quarter of the current y span. |
 | `k` | Pan up by one quarter of the current y span. |
 | Middle-click or `c` | Center the current view on the cursor without changing its span. |

@@ -50,6 +50,10 @@ module run_star_extras
 
 Where the file `kipp/params.inc` can be:
 
+> [!TIP]
+> `kippy` works best when you output _every single model_ for plotting. This 
+> allows you to check for insufficient resolution in both space and time.
+
 ```fortran
 ! "kipp" record (for Kippenhahn diagrams via kippy):
 ! direct stream file -- every cell of every timestep together!
