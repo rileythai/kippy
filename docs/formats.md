@@ -30,7 +30,8 @@ fields.
 
 The Fortran reader supports record versions 10600 through 10699 and record
 versions 10700 and later. Versions below 10600, including 10400 and 10500, are
-rejected with an error.
+rejected with an error. The full record layout is described in
+[`.cnv` files](cnvfiles.md).
 
 ## MESA profiles directory
 
@@ -58,7 +59,8 @@ energy layer; no separate neutrino layer is created.
 
 For a data path such as `path/to/file.kipp`, Kippy first looks for
 `path/to/file.kipp.hdr` beside it. If that file is absent, it looks for
-`file.kipp.hdr` in the working directory.
+`file.kipp.hdr` in the working directory. The full data and header format is
+described in [`.kipp` files](kippfiles.md#file-format).
 
 The reader streams the data twice. The first pass builds coordinates,
 convection, and energy while finding the run-wide range of each generic colour
