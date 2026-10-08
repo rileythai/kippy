@@ -2,15 +2,24 @@
 
 ## Introduction
 
-`KEPLER` writes a convection history file, `.cnv`, as part of a normal run, so
-no changes to the code are needed to use it with `kippy`. Each record holds the
-convection zones, mass and radius grid, and quantized energy generation of one
-model, which makes the file compact compared to full profile dumps.
+For `KEPLER`, Alex Heger developed the `.cnv` format, which 
+can be loaded with `kippy`. Each record holds the convection zones, 
+mass and radius grid, and quantized energy generation of one model 
+in an extremely compact form, which makes the file highly I/O 
+efficient compared to a full zone-by-zone profile dump.
 
-This page describes the binary layout `kippy` expects, for anyone writing a
-converter to `.cnv` or debugging a file that will not load. `kippy` treats any
+Because of its compact nature, the file format is not designed to support
+a variety of data columns. For a more general usecase with a MESA profile-style
+record, it is recommended to use [`.kipp` files](kippfiles.md).
+
+This page describes the binary layout `kippy` expects for `KEPLER`-style, for 
+anyone writing a writer/converter to `.cnv`. `kippy` will treat any
 path that does not match another [input format](formats.md) as a `.cnv` file;
 the suffix itself is not checked.
+
+!!! tip
+    `kippy` works best when you output _every single model_ for plotting. This 
+    allows you to check for insufficient resolution in both space and time.
 
 ## File structure
 
@@ -24,7 +33,7 @@ record by its own version:
 
 | `nvers` | Layout |
 | --- | --- |
-| below 10600 | Rejected with an error |
+| below 10600 | Rejected with an error (very old versions) |
 | 10600 to 10699 | `ladv` follows `rncoord`; no `toffset` |
 | 10700 and later | `toffset` follows `dt`; `ladv` follows `ncoord` |
 
