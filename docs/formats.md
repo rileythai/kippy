@@ -12,19 +12,19 @@ KEPLER convection reader; the `.cnv` suffix itself is not checked.
 
 | Format | Detected from the path | Convection source | Energy or epsnuc source | Colour fields available |
 | --- | --- | --- | --- | --- |
-| KEPLER `.cnv` | Fallback after the other checks | Native `yzip` and `iconv` zone records | Native nuclear, neutrino, and related energy layers | No generic source-column fields |
-| MESA profiles directory | `<path>/profiles.index` exists | `mixing_type` | `eps_nuc`; `eps_nuc_neu_total` supplies the neutrino layer | `logT`, `logRho`, `logL`, `luminosity`, `logP`, `pressure`, `opacity`, `entropy`, and `velocity`, when present |
+| KEPLER-style `.cnv` | Fallback after the other checks | Native `yzip` and `iconv` zone records | Native nuclear, neutrino, and related energy layers | No generic source-column fields |
 | Raw `.kipp` stream | Path ends with `.kipp` | The stream's mixing column | One eps column supplies the net energy layer | Every named non-structural column in the `.hdr` sidecar |
+| MESA profiles directory | `<path>/profiles.index` exists | `mixing_type` | `eps_nuc`; `eps_nuc_neu_total` supplies the neutrino layer | `logT`, `logRho`, `logL`, `luminosity`, `logP`, `pressure`, `opacity`, `entropy`, and `velocity`, when present |
 | MONASH `seq` | Basename begins with `seq.` or ends with `.seq` | `kcvtn` | Approximate epsnuc from `dL/dm` | Temperature, density, pressure, luminosity, and seven reaction rates |
 
 !!! note
     The MONASH stellar evolution code and KEPLER are both closed-source codes.
 
-## KEPLER `.cnv`
+## KEPLER-style `.cnv`
 
-The KEPLER reader consumes the convection zones, mass and radius coordinates,
-and energy layers stored directly in the sequential unformatted `.cnv` records.
-These native energy records provide the nuclear and neutrino bands used by the
+The `.cnv` reader uses the convection zones, mass and radius coordinates,
+and energy layers stored directly in the sequential unformatted [`.cnv` file format](cnvfiles.md).
+These records provide the nuclear and neutrino bands used by the
 plot. The reader does not register generic source columns as selectable colour
 fields.
 
@@ -42,9 +42,9 @@ model. Convection zones come from `mixing_type`, the epsnuc layer comes from
 `eps_nuc`, and `eps_nuc_neu_total` supplies a separate neutrino layer.
 
 MESA profiles may be sparse in time rather than present at every model. The band
-tracer bridges consecutive loaded profiles into continuous polygons.
+tracer will thus bridge consecutive loaded profiles into continuous polygons.
 
-Kippy offers a curated set of MESA columns as colour fields: `logT`, `logRho`,
+`kippy` offers a curated set of MESA columns as colour fields: `logT`, `logRho`,
 `logL`, `luminosity`, `logP`, `pressure`, `opacity`, `entropy`, and `velocity`.
 Only columns present in the run are registered.
 
@@ -52,12 +52,11 @@ Only columns present in the run are registered.
 
 A `.kipp` file is a custom file contiguous little-endian float64 cell dump. Cells are
 grouped by monotonically increasing model number, with one row per zone. The
-sidecar header defines the column count and column names, including the model,
-age, mass, radius, mixing, and single eps columns required to build the plot.
-The mixing column supplies convection, while the eps column supplies one net
-energy layer; no separate neutrino layer is created.
+sidecar header (`.kipp.hdr`) defines the column count and column names, including the model,
+age, mass, radius, mixing, and single `eps` columns required to build the plot.
+No separate neutrino layer is created.
 
-For a data path such as `path/to/file.kipp`, Kippy first looks for
+For a data path such as `path/to/file.kipp`, kippy first looks for
 `path/to/file.kipp.hdr` beside it. If that file is absent, it looks for
 `file.kipp.hdr` in the working directory. The full data and header format is
 described in [`.kipp` files](kippfiles.md#file-format).
@@ -93,7 +92,7 @@ Use `color <column>` to select a registered non-structural column. The raw
 MONASH readers register the curated fields listed above. Use `fields` to list
 the selectors and ranges available for the loaded input.
 
-Field values are quantized into 24 contour bins over the minimum and maximum
+Field values are always quantized into 24 contour bins over the minimum and maximum
 across the loaded run. Scaling switches automatically from linear to logarithmic
 when the complete range is positive and spans more than two decades. These
 generic fields are separate from the built-in `epsnuc` energy overlay.

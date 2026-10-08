@@ -2,16 +2,16 @@
 
 ## From PyPI
 
-kippy runs on Linux. Pre-built wheels for x86_64 and aarch64 bundle giza and
-its cairo and gfortran runtime libraries:
+kippy currently only runs on Linux. Pre-built wheels for x86_64 and aarch64 
+bundle all relevant libraries, including giza and cairo and gfortran runtime libs.
 
 ```bash
 pip install kippy
 ```
 
-The wheels expect the system X11 libraries (`libX11`, `libXext`, `libXrender`)
+The wheels do expect the system X11 libraries (`libX11`, `libXext`, `libXrender`)
 and `libexpat`, which desktop Linux installs already provide. Without a
-matching wheel, pip builds from the sdist, which needs the requirements below.
+matching wheel, pip will build from the `sdist`, which needs the requirements below.
 
 ## Building from source
 
