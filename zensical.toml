@@ -8,8 +8,10 @@ nav = [
   { "Home" = "index.md" },
   { "Installation" = "install.md" },
   { "Usage" = "usage.md" },
-  { "kipp Files" = "kippfiles.md" },
-  { "cnv Files" = "cnvfiles.md" },
-  { "Input formats" = "formats.md" },
+  { "Input formats" = [
+    { "Overview" = "formats.md" },
+    { "kipp Files" = "kippfiles.md" },
+    { "cnv Files" = "cnvfiles.md" },
+  ] },
   { "Python API" = "api.md" },
 ]
