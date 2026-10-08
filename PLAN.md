@@ -33,6 +33,7 @@ a vendored giza submodule; Python drives the executables as subprocesses.
 | 13 | PDF export (`S` key, `save <file>.pdf`) | done | Claude | `kipp_save` dispatches on the `.pdf` suffix to giza `/pdf` at a fixed one-column page (`PDF_WIDTH`=3.5 in, height = width/phi, 252x156 pt); giza sizes text as a fraction of page height, so a module `chs` (`PDF_CHS`=2, ~8.4 pt labels) scales every character height during the PDF render and the field-colorbar end-tick inset; `S` in cursor mode writes a numbered `<prefix>_NNNN.pdf` sharing the `s` counter. Verified on the seq fixture (Temperature + epsnuc) via REPL `save` and scripted `key S`; PNG path unchanged (chs=1). Hatch spacing/width (8 / 1.5 device units) are hard-coded in giza so they render as 8 pt / 1.5 pt in the PDF |
 | 15 | Copy PNG to clipboard (`p` key) | done | Claude+codex-swarm | `p` in cursor mode renders via `kipp_save` to `/tmp/kippy-<pid>-clip.png`, pipes it to `wl-copy --type image/png`, falls back to `xclip -selection clipboard`, then deletes the temp file; does not bump the `s`/`S` counter. The copy's stdout/stderr go to /dev/null because the forked clipboard owner dies with a captured pipe and the clipboard reverts. Verified with `.scratch/verify_clip.sh` (`wl-paste` returns an 800x600 PNG) and the no-display failure message |
 | 16 | LGPLv3 licensing + per-file headers + strip foreign-project references | done | Claude | `3b10ba9` + `abcfc4c`; LGPL-3.0-or-later, root `COPYING`/`COPYING.LESSER` (canonical FSF texts from giza), PEP 639 `license`/`license-files` incl. giza's (meson-python floor 0.18.0, first with pyproject-metadata 0.9); FSF notice headers ("the kippy authors (see AUTHORS)") on all 9 `.f90`, 3 `.py`, 2 `meson.build`; keppy / Python `ConvData` / `convdata.py` / "vendored reader" references removed from comments, docs and the pre-10600 error message. Verified: wheel builds, METADATA `License-Expression: LGPL-3.0-or-later` + 4 license files, `convdump` runs on the seq fixture |
+| 17 | Format reference pages for `.cnv` and `.kipp` | done | Claude | New `docs/cnvfiles.md` (big-endian sequential records, full 10600/10700 field layout, how kippy reads models/coords/zones/energy levels and floors) and a `File format` section in `docs/kippfiles.md` (little-endian float64 rows, surface->centre order, header grammar, required column aliases, MESA mixing codes, eps binning, colour fields); nav + links from `formats.md`. Layouts validated by `.scratch/check_cnv_layout.py` (all 10363 v10700 records of keppy `convdata.cnv` match their record markers byte for byte) and `.scratch/check_kipp_layout.py` (a real float64 `profile.kipp`). The 10600 layout is documented from the reader only (no fixture) |
 
 ### Inherited from keppy
 
@@ -85,7 +86,14 @@ Record key decisions here as they are made. Append only — do not delete previo
 
 _Updated at the end of each session or major phase._
 
-**Last updated**: 2026-10-06
+**Last updated**: 2026-10-08
+**Status (2026-10-08)**: Added `.cnv` and `.kipp` format reference docs (task 17),
+validated against real files. Open questions found while writing: keppy's Python
+reader groups the 12 `.cnv` level floors as (2, nlayer) while `kipp.f90` reads
+them as per-layer (gain, loss) pairs; the docs describe kippy's reading. The
+`.kipp` `dtype` header line is ignored, so float32 streams (as in the blueloops
+runs) do not load. Task 7 PyPI/Pages setup still needs the user.
+
 **Status (2026-10-06e)**: Release prep for task 7 done locally: metadata/urls,
 sdist exclusions, wheel + docs CI, README synced with the docs index (badges,
 demo gif via raw.githubusercontent). Local cibuildwheel x86_64 wheel verified
