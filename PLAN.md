@@ -34,6 +34,7 @@ a vendored giza submodule; Python drives the executables as subprocesses.
 | 15 | Copy PNG to clipboard (`p` key) | done | Claude+codex-swarm | `p` in cursor mode renders via `kipp_save` to `/tmp/kippy-<pid>-clip.png`, pipes it to `wl-copy --type image/png`, falls back to `xclip -selection clipboard`, then deletes the temp file; does not bump the `s`/`S` counter. The copy's stdout/stderr go to /dev/null because the forked clipboard owner dies with a captured pipe and the clipboard reverts. Verified with `.scratch/verify_clip.sh` (`wl-paste` returns an 800x600 PNG) and the no-display failure message |
 | 16 | LGPLv3 licensing + per-file headers + strip foreign-project references | done | Claude | `3b10ba9` + `abcfc4c`; LGPL-3.0-or-later, root `COPYING`/`COPYING.LESSER` (canonical FSF texts from giza), PEP 639 `license`/`license-files` incl. giza's (meson-python floor 0.18.0, first with pyproject-metadata 0.9); FSF notice headers ("the kippy authors (see AUTHORS)") on all 9 `.f90`, 3 `.py`, 2 `meson.build`; keppy / Python `ConvData` / `convdata.py` / "vendored reader" references removed from comments, docs and the pre-10600 error message. Verified: wheel builds, METADATA `License-Expression: LGPL-3.0-or-later` + 4 license files, `convdump` runs on the seq fixture |
 | 17 | Format reference pages for `.cnv` and `.kipp` | done | Claude | New `docs/cnvfiles.md` (big-endian sequential records, full 10600/10700 field layout, how kippy reads models/coords/zones/energy levels and floors) and a `File format` section in `docs/kippfiles.md` (little-endian float64 rows, surface->centre order, header grammar, required column aliases, MESA mixing codes, eps binning, colour fields); nested in the nav under `Input formats` (Overview / kipp Files / cnv Files) + links from `formats.md`. Layouts validated by `.scratch/check_cnv_layout.py` (all 10363 v10700 records of keppy `convdata.cnv` match their record markers byte for byte) and `.scratch/check_kipp_layout.py` (a real float64 `profile.kipp`). The 10600 layout is documented from the reader only (no fixture) |
+| 18 | macOS build + wheels (Apple Silicon and Intel) | in progress | Claude | Branch `macos` (`137b861`, `fc7519e`, `e0c1d4a`). `build_giza.py` stages `libgiza.2.dylib` + `libgiza.dylib` on darwin (libtool names) and resets the install name to `@rpath/libgiza.2.dylib` (libtool bakes `<libdir>/...`); `meson.build` picks lib names and `@loader_path`/`$ORIGIN` per platform, probes OpenMP with gfortran (Apple clang has none). cibuildwheel macOS wheels on `macos-15` + `macos-15-intel`, `MACOSX_DEPLOYMENT_TARGET=15.0`, `tools/smoke_test.py` renders a synthetic `.kipp` headless, workflow step fails if `otool -L` shows a Homebrew path after delocate. Verified on Linux only: fresh meson build, install plan and wheel contents unchanged, smoke test passes. Remaining: push branch + run CI on macOS (no local Mac); interactive `/xw` via XQuartz untested; giza's native `/osxcocoa` driver not wired (needs convview main restructured) |
 
 ### Inherited from keppy
 
@@ -81,12 +82,20 @@ Record key decisions here as they are made. Append only — do not delete previo
 | 2026-10-06 | licence | LGPL-3.0-only vs -or-later; SPDX vs full FSF headers | LGPL-3.0-or-later, full FSF notice, copyright "the kippy authors" | User choice; matches giza (LGPLv3), which the wheel bundles |
 | 2026-10-06 | reader code relicence | keep unlicensed vs relicence under LGPL | Relicence under LGPL-3.0-or-later | Alexander Heger (original author of the keppy-era reader/viewer code) confirmed the code may be LGPLv3 licensed |
 | 2026-10-06 | docs hosting | readthedocs vs GH Pages | GH Pages via Actions, custom domain `kippy.rileythai.com` | User choice; zensical builds a static site, Pages deploy needs no extra service |
+| 2026-10-14 | macOS support scope | source build only vs also wheels | Source build + cibuildwheel macOS wheels (arm64, x86_64) | User choice |
+| 2026-10-14 | macOS wheel minimum OS | 15.0 on macos-15 runners vs 14.0 on deprecated macos-14 vs deps from source | 15.0 | User choice; delocate bundles Homebrew bottles, which target the runner OS, so the wheel cannot claim older. Older macOS builds from the sdist |
+| 2026-10-14 | macOS interactive window | XQuartz `/xw` vs giza native `/osxcocoa` | XQuartz for now | User choice; `/osxcocoa` needs convview's main renamed to `giza_main` and linked with `libgiza-osxcocoa-main` |
 
 ## Session State
 
 _Updated at the end of each session or major phase._
 
-**Last updated**: 2026-10-08
+**Last updated**: 2026-10-14
+**Status (2026-10-14)**: macOS build + wheels (task 18) on branch `macos`,
+verified on Linux only. Next: push the branch and run `wheels.yml` (workflow
+dispatch on `macos` or a PR) to build and smoke-test on `macos-15` and
+`macos-15-intel`; fix whatever the first macOS run turns up, then merge.
+
 **Status (2026-10-08)**: Added `.cnv` and `.kipp` format reference docs (task 17),
 validated against real files. Open questions found while writing: keppy's Python
 reader groups the 12 `.cnv` level floors as (2, nlayer) while `kipp.f90` reads
