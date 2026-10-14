@@ -76,7 +76,11 @@ def main():
     if not (builddir / "config.status").exists():
         run([str(giza / "configure")], builddir)
 
-    run(["make", f"-j{os.cpu_count() or 1}"], builddir)
+    # build only what kippy links. the full tree also builds giza's tests and,
+    # on macos, libgiza-osxcocoa-main, which leaves giza_main undefined and
+    # fails to link once MACOSX_DEPLOYMENT_TARGET is set (giza's libtool 2.4.6
+    # only allows undefined symbols for 10.x targets)
+    run(["make", f"-j{os.cpu_count() or 1}", "libgiza.la", "giza-fortran.lo"], src)
 
     # stage the real shared object, recreate its symlink chain locally
     shutil.copy2(libs / LIB_REAL, out / LIB_REAL)
