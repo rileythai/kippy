@@ -558,7 +558,7 @@ contains
       case ('model_number', 'model', &
             'star_age_yr', 'star_age', 'age_yr', 'dt_s', 'dt', &
             'm_g', 'mass_g', 'mass', 'r_cm', 'radius_cm', 'r', &
-            'mixing_type', 'mix_type', 'mixing', &
+            'mixing_type', 'mix_type', 'mixing', 'mlt_mixing_type', &
             'eps_net_erg_g_s', 'eps_nuc', 'eps_net', 'eps')
          yes = .true.
       case default
