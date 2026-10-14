@@ -2,16 +2,22 @@
 
 ## From PyPI
 
-kippy currently only runs on Linux. Pre-built wheels for x86_64 and aarch64 
-bundle all relevant libraries, including giza and cairo and gfortran runtime libs.
+kippy runs on Linux and macOS. Pre-built wheels for Linux (x86_64, aarch64) and
+macOS 15 or newer (Apple Silicon, Intel) bundle all relevant libraries,
+including giza and cairo and gfortran runtime libs.
 
 ```bash
 pip install kippy
 ```
 
-The wheels do expect the system X11 libraries (`libX11`, `libXext`, `libXrender`)
-and `libexpat`, which desktop Linux installs already provide. Without a
-matching wheel, pip will build from the `sdist`, which needs the requirements below.
+The Linux wheels do expect the system X11 libraries (`libX11`, `libXext`,
+`libXrender`) and `libexpat`, which desktop Linux installs already provide.
+Without a matching wheel, pip will build from the `sdist`, which needs the
+requirements below.
+
+On macOS the interactive window needs an X server such as
+[XQuartz](https://www.xquartz.org/). Without one (no `DISPLAY` set), kippy
+renders to PNG and PDF only.
 
 ## Building from source
 
@@ -24,6 +30,13 @@ Fortran core and bundled giza library requires:
 - `meson`
 - `ninja`
 - development packages for cairo, libx11, and freetype2
+
+On macOS, Homebrew provides these (`gcc` supplies `gfortran`, and `cairo` pulls
+in libx11 and freetype2), along with the Xcode command line tools:
+
+```bash
+brew install gcc pkgconf cairo
+```
 
 ### Clone the repository
 
@@ -62,7 +75,9 @@ uv pip install --no-build-isolation --force-reinstall -e .
 ```
 
 The build ships `libgiza.so.2` under `kippy/bin`. The Python launchers add that
-directory to `LD_LIBRARY_PATH` when starting the compiled executables.
+directory to `LD_LIBRARY_PATH` when starting the compiled executables. On macOS
+the library is `libgiza.2.dylib`, found through the executables'
+`@loader_path` rpath.
 
 ## Build the documentation
 
