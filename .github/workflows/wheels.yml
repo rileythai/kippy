@@ -33,10 +33,11 @@ jobs:
         with:
           submodules: recursive
       - uses: pypa/cibuildwheel@v4.3.0
-      # the smoke test passes with homebrew still installed, so check delocate
-      # left no load path pointing into it
+      # the smoke test passes with homebrew still installed, 
+      # so check if delocate left no load path pointing into it
       - if: runner.os == 'macOS'
         run: |
+          mkdir unpacked
           for whl in wheelhouse/*.whl; do unzip -q "$whl" -d "unpacked/$(basename "$whl")"; done
           find unpacked -type f -exec otool -L {} + | tee deps.txt
           ! grep -E '/(opt/homebrew|usr/local)/' deps.txt
