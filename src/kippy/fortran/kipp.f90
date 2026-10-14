@@ -343,7 +343,7 @@ contains
    ! the current device.
    subroutine kipp_save(name)
       character(len=*), intent(in) :: name
-      character(len=64) :: pfx
+      character(len=256) :: pfx
       character(len=4) :: ext
       integer :: id, n
       pfx = name
