@@ -26,13 +26,20 @@ jobs:
   wheels:
     strategy:
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
       - uses: pypa/cibuildwheel@v4.3.0
+      # the smoke test passes with homebrew still installed, so check delocate
+      # left no load path pointing into it
+      - if: runner.os == 'macOS'
+        run: |
+          for whl in wheelhouse/*.whl; do unzip -q "$whl" -d "unpacked/$(basename "$whl")"; done
+          find unpacked -type f -exec otool -L {} + | tee deps.txt
+          ! grep -E '/(opt/homebrew|usr/local)/' deps.txt
       - uses: actions/upload-artifact@v7
         with:
           name: wheels-${{ matrix.os }}
