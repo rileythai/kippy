@@ -15,9 +15,30 @@ The Linux wheels do expect the system X11 libraries (`libX11`, `libXext`,
 Without a matching wheel, pip will build from the `sdist`, which needs the
 requirements below.
 
-On macOS the interactive window needs an X server such as
-[XQuartz](https://www.xquartz.org/). Without one (no `DISPLAY` set), kippy
-renders to PNG and PDF only.
+## macOS
+
+The macOS wheels need macOS 15 or newer. On older versions pip builds from the
+sdist, which needs the Homebrew packages listed under
+[Requirements](#requirements).
+
+kippy draws its interactive window with X11, so macOS needs the
+[XQuartz](https://www.xquartz.org/) X server:
+
+```bash
+brew install --cask xquartz
+```
+
+XQuartz sets `DISPLAY` through launchd when you log in. If `echo $DISPLAY`
+prints nothing in a new terminal after installing, log out and back in. With
+`DISPLAY` set, `convview` opens the interactive window as on Linux. kippy has no
+native macOS window.
+
+Without XQuartz, `DISPLAY` is unset and `convview` renders headless to PNG and
+PDF files, with no cursor mode (see
+[headless rendering](usage.md#headless-rendering)).
+
+The `p` key copies to the clipboard with `wl-copy` or `xclip`, which macOS does
+not provide, so save snapshots with `s` or `S` instead.
 
 ## Building from source
 
@@ -31,10 +52,11 @@ Fortran core and bundled giza library requires:
 - `ninja`
 - development packages for cairo, libx11, and freetype2
 
-On macOS, Homebrew provides these (`gcc` supplies `gfortran`, and `cairo` pulls
-in libx11 and freetype2), along with the Xcode command line tools:
+On macOS, install the Xcode command line tools and these Homebrew packages
+(`gcc` supplies `gfortran`, and `cairo` pulls in libx11 and freetype2):
 
 ```bash
+xcode-select --install
 brew install gcc pkgconf cairo
 ```
 

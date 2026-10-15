@@ -79,6 +79,8 @@ def child_env() -> dict
 
 Returns a copy of the current environment for launching the bundled
 executables. The bundled binary directory is prepended to `LD_LIBRARY_PATH`.
+On macOS the executables find `libgiza` through their `@loader_path` rpath
+instead.
 
 ## Console scripts
 
