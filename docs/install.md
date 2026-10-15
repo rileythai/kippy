@@ -37,8 +37,8 @@ Without XQuartz, `DISPLAY` is unset and `convview` renders headless to PNG and
 PDF files, with no cursor mode (see
 [headless rendering](usage.md#headless-rendering)).
 
-The `p` key copies to the clipboard with `wl-copy` or `xclip`, which macOS does
-not provide, so save snapshots with `s` or `S` instead.
+The `p` key copies the PNG to the macOS clipboard through `osascript`, which
+ships with macOS.
 
 ## Building from source
 
