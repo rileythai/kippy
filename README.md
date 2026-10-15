@@ -27,8 +27,9 @@ Full documentation: <https://kippy.rileythai.com>
 
 ## Install
 
-kippy runs on Linux and macOS. On macOS the interactive window needs an X
-server such as XQuartz.
+kippy runs on Linux and macOS (wheels for macOS 15 or newer). On macOS the
+interactive window needs [XQuartz](https://www.xquartz.org/); see the
+[macOS notes](https://kippy.rileythai.com/install/#macos).
 
 ```bash
 pip install kippy
