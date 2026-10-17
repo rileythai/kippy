@@ -20,7 +20,8 @@ Both commands use `convdata.cnv` in the current directory when `path` is
 omitted. Only the first command-line argument is used as the path.
 
 When `DISPLAY` is non-empty, `convview` will open an interactive `/xw` window. It
-renders once and enters Cursor mode (see below) before showing the `kipp>` prompt. 
+renders once and enters Cursor mode (see below) before showing the `kipp>` prompt.
+On macOS the window needs XQuartz (see [macOS](install.md#macos)).
 
 Press `q` or `Esc` in the plot window to leave cursor mode and reach the prompt for REPL commands (see below).
 
@@ -43,7 +44,7 @@ in the current linear or logarithmic window coordinates.
 | Middle-click or `c` | Center the current view on the cursor without changing its span. |
 | `r`, `a`, or `0` | Restore automatic limits on both axes and render the full view. |
 | `s` | Save a numbered PNG snapshot named `convview_NNNN.png`. |
-| `p` | Copy a PNG snapshot to the system clipboard. |
+| `p` | Copy a PNG snapshot to the system clipboard, with `wl-copy` or `xclip` on Linux and `osascript` on macOS. |
 | `S` | Save a numbered PDF snapshot named `convview_NNNN.pdf`. |
 | `?` | Print cursor-mode help. |
 | `q` or Esc | Leave cursor mode and return to the REPL. |
@@ -88,7 +89,8 @@ canonical field present in the input.
 To enable scripting, `kippy`'s core interface supports a headless rendering mode and scripted rendering.
 
 ## Headless rendering
-When the `DISPLAY`, `convview` uses the `/png` device. The initial render writes
+When `DISPLAY` is unset or empty, as on macOS without XQuartz, `convview` uses
+the `/png` device. The initial render writes
 `convview.png`; each command that renders again replaces that file. Cursor mode
 is unavailable in this mode. Use `save` to write a separately named PNG or PDF.
 

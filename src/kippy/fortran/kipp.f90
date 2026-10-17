@@ -343,7 +343,7 @@ contains
    ! the current device.
    subroutine kipp_save(name)
       character(len=*), intent(in) :: name
-      character(len=64) :: pfx
+      character(len=256) :: pfx
       character(len=4) :: ext
       integer :: id, n
       pfx = name
@@ -498,8 +498,13 @@ contains
          write (snap, '(a,i0,a)') '/tmp/kippy-', c_getpid(), '-clip'
          call kipp_save(trim(snap))
          ! the forked clipboard owner must not hold our stdout/stderr: if
-         ! those are a pipe it dies when the pipe closes and the copy is lost
+         ! those are a pipe it dies when the pipe closes and the copy is lost.
+         ! macos pbcopy only takes text, so the png goes to NSPasteboard via jxa
          cmd = "{ wl-copy --type image/png < "//trim(snap)//".png || "// &
+               'osascript -l JavaScript -e ''ObjC.import("AppKit"); '// &
+               'var pb = $.NSPasteboard.generalPasteboard; pb.clearContents; '// &
+               'if (!pb.setDataForType($.NSData.dataWithContentsOfFile("'//trim(snap)//'.png"), '// &
+               '$.NSPasteboardTypePNG)) throw "copy failed"'' || '// &
                "xclip -selection clipboard -t image/png -i "//trim(snap)//".png; } "// &
                ">/dev/null 2>&1"
          exitstat = 1
@@ -508,7 +513,7 @@ contains
          if (cmdstat == 0 .and. exitstat == 0) then
             print '(a)', '[kipp] copied png to clipboard'
          else
-            print '(a)', '[kipp] could not copy png: wl-copy and xclip missing or failed'
+            print '(a)', '[kipp] could not copy png: wl-copy, osascript and xclip missing or failed'
          end if
          open (newunit=tmpunit, file=trim(snap)//'.png', status='old', iostat=ierr)
          if (ierr == 0) close (tmpunit, status='delete')

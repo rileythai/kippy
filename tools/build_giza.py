@@ -38,9 +38,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-# shared lib real name and its versioned/linker symlinks (soname libgiza.so.2)
-LIB_REAL = "libgiza.so.2.0.0"
-LIB_LINKS = ("libgiza.so.2", "libgiza.so")
+# shared lib real name and its versioned/linker symlinks, as libtool names them
+if sys.platform == "darwin":
+    LIB_REAL = "libgiza.2.dylib"
+    LIB_LINKS = ("libgiza.dylib",)
+else:
+    LIB_REAL = "libgiza.so.2.0.0"
+    LIB_LINKS = ("libgiza.so.2", "libgiza.so")
 MODFILE = "giza.mod"
 FOBJ = "giza-fortran.o"
 
@@ -72,10 +76,19 @@ def main():
     if not (builddir / "config.status").exists():
         run([str(giza / "configure")], builddir)
 
-    run(["make", f"-j{os.cpu_count() or 1}"], builddir)
+    # build only what kippy links. the full tree also builds giza's tests and,
+    # on macos, libgiza-osxcocoa-main, which leaves giza_main undefined and
+    # fails to link once MACOSX_DEPLOYMENT_TARGET is set (giza's libtool 2.4.6
+    # only allows undefined symbols for 10.x targets)
+    run(["make", f"-j{os.cpu_count() or 1}", "libgiza.la", "giza-fortran.lo"], src)
 
     # stage the real shared object, recreate its symlink chain locally
     shutil.copy2(libs / LIB_REAL, out / LIB_REAL)
+    if sys.platform == "darwin":
+        # libtool sets the install name to <libdir>/libgiza.2.dylib, which the
+        # executables would record and load from; @rpath lets their
+        # @loader_path rpath find the bundled copy instead
+        run(["install_name_tool", "-id", f"@rpath/{LIB_REAL}", str(out / LIB_REAL)], out)
     for link in LIB_LINKS:
         target = out / link
         if target.exists() or target.is_symlink():
