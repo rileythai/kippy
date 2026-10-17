@@ -28,7 +28,7 @@ module kipp
    use convdata, only: data, fieldlayer, &
                        FIELD_NBINS, nfields, field_names, &
                        field_vmin, field_vmax, field_log
-   use mesaload, only: load_convection
+   use mesaload, only: load_convection, cnv_loaded
    use giza
 
    implicit none
@@ -76,6 +76,7 @@ module kipp
       character(len=64) :: prefix = 'convview'
       logical           :: interactive = .true.
       logical           :: showmodels = .true.
+      logical           :: showgrid = .false.
       integer           :: devid = -1
    end type kstate_t
 
@@ -542,6 +543,8 @@ contains
          nsnap = nsnap + 1
          write (snap, '(a,a,i4.4)') trim(st%prefix), '_', nsnap
          call kipp_save(trim(snap)//'.pdf')
+      case ('g')                               ! toggle the cell/time grid
+         st%showgrid = .not. st%showgrid; call kipp_render()
       case ('?')
          call cursor_help()
       case default
@@ -563,7 +566,7 @@ contains
       print '(a)', '  scroll / z / Z   zoom in / out           right-click  zoom out'
       print '(a)', '  h j k l          pan left down up right  middle-click / c  centre here'
       print '(a)', '  r                reset to full view      s / S  save png / pdf snapshot'
-      print '(a)', '  p                copy png to clipboard'
+      print '(a)', '  p                copy png to clipboard   g  toggle cell/time grid'
       print '(a)', '  ?                this help               q / Esc / Ctrl-C  back to prompt'
    end subroutine cursor_help
 
@@ -786,6 +789,7 @@ contains
          call draw_field(fidx)               ! generic column colour field
       end if
       call draw_convection() ! convective hatch
+      call draw_grid(wx1, wx2, wy1, wy2)
       call draw_surface() ! surface of star
 
       ! axes on top
@@ -2052,6 +2056,82 @@ contains
       call giza_set_line_width(2.d0)
       call giza_line(n, epx(1:n), epy(1:n))
    end subroutine draw_surface
+
+   ! Cell and time boundary grid over the visible models.  Strips narrower
+   ! than a device pixel merge into the next drawn one, which shows that
+   ! model's faces, and faces within a pixel of the last one kept are
+   ! skipped, so the cost follows the window size rather than the file.
+   subroutine draw_grid(wx1, wx2, wy1, wy2)
+      real(real64), intent(in) :: wx1, wx2, wy1, wy2
+      real(real64) :: px1, px2, py1, py2, dxw, dyw, xa, xb
+      integer(int32) :: i
+      logical, save :: noted = .false.
+
+      if (.not. st%showgrid) return
+      if (cnv_loaded .and. .not. noted) then
+         print '(a)', '[kipp] grid: a KEPLER .cnv stores a reduced set of grid points, not every zone'
+         noted = .true.
+      end if
+      call giza_get_viewport(3_c_int, px1, px2, py1, py2)
+      dxw = abs(wx2 - wx1)/max(abs(px2 - px1), 1.d0)
+      dyw = abs(wy2 - wy1)/max(abs(py2 - py1), 1.d0)
+      call giza_set_colour_representation(7, 0.5d0, 0.5d0, 0.5d0)
+      call giza_set_colour_index(7)
+      call giza_set_line_width(1.d0)
+      xa = xtrans(xedge(ivis0))
+      call grid_edge(xa, ivis0, ivis0)
+      do i = ivis0, ivis1
+         xb = xtrans(xedge(i + 1))
+         if (xb - xa < dxw .and. i < ivis1) cycle
+         if (st%yaxis == 'radius') then
+            call grid_strip(xa, xb, data(i)%rncoord, dyw)
+         else
+            call grid_strip(xa, xb, data(i)%xmcoord, dyw)
+         end if
+         call grid_edge(xb, i, min(i + 1, nmodels))
+         xa = xb
+      end do
+   end subroutine draw_grid
+
+   ! time boundary at window x, spanning the extent of models i and k
+   subroutine grid_edge(x, i, k)
+      real(real64), intent(in) :: x
+      integer(int32), intent(in) :: i, k
+      real(real64) :: ex(2), ey(2)
+      ex = clampx(x)
+      ey(1) = clampy(ytrans(min(mbound(i, 0_int32), mbound(k, 0_int32))))
+      ey(2) = clampy(ytrans(max(ystar(i), ystar(k))))
+      call giza_line(2, ex, ey)
+   end subroutine grid_edge
+
+   ! one zig-zag polyline across window x [xa, xb] through the cell faces c
+   ! (cgs, centre to surface) inside the view, skipping faces within dyw
+   ! window units of the last one kept
+   subroutine grid_strip(xa, xb, c, dyw)
+      real(real64), intent(in) :: xa, xb, c(:), dyw
+      real(real64) :: y, ylast, xl, xr
+      integer(int32) :: j, j0, j1, n
+
+      j0 = max(1_int32, bisect_le(c, min(st%ymin, st%ymax)*yscale()))
+      j1 = min(int(size(c), int32), bisect_le(c, max(st%ymin, st%ymax)*yscale()) + 1_int32)
+      call ensure_scratch(2*(j1 - j0 + 1))
+      xl = clampx(xa); xr = clampx(xb)
+      n = 0
+      ylast = -huge(1.d0)
+      do j = j0, j1
+         y = ytrans(c(j))
+         if (y - ylast < dyw .and. j < j1) cycle
+         ylast = y
+         if (mod(n/2, 2) == 0) then
+            epx(n + 1) = xl; epx(n + 2) = xr
+         else
+            epx(n + 1) = xr; epx(n + 2) = xl
+         end if
+         epy(n + 1:n + 2) = clampy(y)
+         n = n + 2
+      end do
+      if (n >= 2) call giza_line(n, epx(1:n), epy(1:n))
+   end subroutine grid_strip
 
    !---------------------------------------------------------------------
    subroutine labels(xlabel, ylabel)

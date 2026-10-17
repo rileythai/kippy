@@ -49,6 +49,7 @@ in the current linear or logarithmic window coordinates.
 | `s` | Save a numbered PNG snapshot named `convview_NNNN.png`. |
 | `p` | Copy a PNG snapshot to the system clipboard, with `wl-copy` or `xclip` on Linux and `osascript` on macOS. |
 | `S` | Save a numbered PDF snapshot named `convview_NNNN.pdf`. |
+| `g` | Toggle the cell and time boundary grid (see `grid` below). |
 | `?` | Print cursor-mode help. |
 | `q`, Esc, or `Ctrl-C` | Leave cursor mode and return to the REPL. |
 
@@ -71,6 +72,7 @@ Commands and arguments are whitespace-separated and case-sensitive.
 | `color` | `colour` | `<selector>` | Select the color field and render. Fixed selectors are `convtype`, `epsnuc` (`enuc`, `nuc`), `nuk` (`loss`), and `neu` (`neutrino`). A registered source column name or supported friendly alias may also be used. `convtype` shows convection hatching without a color-field overlay. |
 | `cmap` | `colormap`, `colourmap` | `teal\|viridis\|blue\|gray\|grey` | Select the colormap used for registered column fields and render. `grey` is an alias for `gray`. |
 | `models` | - | `on\|off` | Show or hide the model-density strip and render. The strip is on by default. |
+| `grid` | - | `on\|off` | Show or hide grey resolution grid lines and render. The grid is off by default. Each model's strip shows that model's stored cell faces, and vertical lines mark the strip edges halfway between neighbouring models. Lines closer than a device pixel are merged, so a densely resolved region fills in solid. Only models written to the file appear, and a KEPLER `.cnv` stores a reduced set of grid points rather than every zone. |
 | `fields` | `columns` | - | List the fixed color selectors and the registered source columns, including each column's linear or logarithmic scale and value range. |
 | `save` | - | `<file.png\|file.pdf>` | Render once to the named file. A name ending in `.pdf` creates a fixed 3.5-inch-wide, one-column PDF page; `.png` creates a PNG. Other suffixes are treated as part of a PNG prefix and `.png` is appended. |
 | `key` | - | `<char> [x y]` | When `KIPP_SCRIPT` is set, run one cursor-mode action. Only the first character is used. Coordinates are in the current plot window coordinate system and default to the view center; on a logarithmic axis they are log10 coordinates. Without `KIPP_SCRIPT`, the command is rejected as unknown. |

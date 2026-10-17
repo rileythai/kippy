@@ -134,6 +134,9 @@ program convview
       case ('models')
          st%showmodels = (trim(a1) == 'on')
          call kipp_render()
+      case ('grid')
+         st%showgrid = (trim(a1) == 'on')
+         call kipp_render()
       case ('fields', 'columns')
          call kipp_list_fields()
       case ('save')
@@ -214,7 +217,7 @@ contains
       print '(a)', '  xaxis time|model      yaxis mass|radius      units solar|cgs'
       print '(a)', '  color convtype|epsnuc|neu|<column>   fields  (list columns)'
       print '(a)', '  cmap teal|viridis|blue|gray   (colour-field colormap)'
-      print '(a)', '  models on|off'
+      print '(a)', '  models on|off         grid on|off   (cell and time boundaries)'
       print '(a)', '  cursor (i)            interactive zoom/pan (or click the plot window)'
       print '(a)', '  reset   redraw   save <file.png|file.pdf>   help   quit'
    end subroutine help
