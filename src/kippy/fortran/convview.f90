@@ -62,11 +62,15 @@ program convview
    do
       write (*, '(a)', advance='no') 'kipp> '
       if (.not. scripted) then
-         if (kipp_wait_click()) then           ! clicked the plot window
+         select case (kipp_wait_input())
+         case (1)                              ! clicked the plot window
             print '(a)', 'cursor'
             call kipp_interact()
             cycle
-         end if
+         case (-1)                             ! closed the plot window
+            print '(a)', 'quit'
+            exit
+         end select
       end if
       read (*, '(a)', iostat=ios) line
       if (ios /= 0) exit                       ! EOF / Ctrl-D
