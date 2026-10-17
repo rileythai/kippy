@@ -61,6 +61,13 @@ program convview
 
    do
       write (*, '(a)', advance='no') 'kipp> '
+      if (.not. scripted) then
+         if (kipp_wait_click()) then           ! clicked the plot window
+            print '(a)', 'cursor'
+            call kipp_interact()
+            cycle
+         end if
+      end if
       read (*, '(a)', iostat=ios) line
       if (ios /= 0) exit                       ! EOF / Ctrl-D
       call tokens(line, cmd, a1, a2, a3)
@@ -204,7 +211,7 @@ contains
       print '(a)', '  color convtype|epsnuc|neu|<column>   fields  (list columns)'
       print '(a)', '  cmap teal|viridis|blue|gray   (colour-field colormap)'
       print '(a)', '  models on|off'
-      print '(a)', '  cursor (i)            interactive zoom/pan on the plot window'
+      print '(a)', '  cursor (i)            interactive zoom/pan (or click the plot window)'
       print '(a)', '  reset   redraw   save <file.png|file.pdf>   help   quit'
    end subroutine help
 
