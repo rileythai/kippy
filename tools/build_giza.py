@@ -38,13 +38,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-# shared lib real name and its versioned/linker symlinks, as libtool names them
+# shared lib staged under its soname (libtool's full linux name changes with
+# every giza interface bump) and the linker symlinks pointing at it
 if sys.platform == "darwin":
     LIB_REAL = "libgiza.2.dylib"
     LIB_LINKS = ("libgiza.dylib",)
 else:
-    LIB_REAL = "libgiza.so.2.0.0"
-    LIB_LINKS = ("libgiza.so.2", "libgiza.so")
+    LIB_REAL = "libgiza.so.2"
+    LIB_LINKS = ("libgiza.so",)
 MODFILE = "giza.mod"
 FOBJ = "giza-fortran.o"
 
@@ -82,7 +83,10 @@ def main():
     # only allows undefined symbols for 10.x targets)
     run(["make", f"-j{os.cpu_count() or 1}", "libgiza.la", "giza-fortran.lo"], src)
 
-    # stage the real shared object, recreate its symlink chain locally
+    # stage the real shared object (copy2 follows the soname symlink),
+    # recreate its symlink chain locally. unlink first: in an older build dir
+    # the soname is a symlink, and copying through it would keep the old name
+    (out / LIB_REAL).unlink(missing_ok=True)
     shutil.copy2(libs / LIB_REAL, out / LIB_REAL)
     if sys.platform == "darwin":
         # libtool sets the install name to <libdir>/libgiza.2.dylib, which the
