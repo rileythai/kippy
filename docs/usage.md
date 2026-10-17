@@ -25,7 +25,8 @@ On macOS the window needs XQuartz (see [macOS](install.md#macos)).
 
 Press `q`, `Esc` or `Ctrl-C` in the plot window to leave cursor mode and reach the prompt for REPL commands (see below).
 Click the plot window (left, middle or right button) at the prompt to enter cursor mode again; the click itself does nothing else.
-Clicks are only watched when standard input is a terminal and `KIPP_SCRIPT` is not set.
+Closing the plot window quits `convview`, from cursor mode or the prompt.
+Clicks and closing are only watched when standard input is a terminal and `KIPP_SCRIPT` is not set.
 
 ## Cursor mode
 

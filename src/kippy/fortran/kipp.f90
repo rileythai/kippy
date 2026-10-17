@@ -47,7 +47,7 @@ module kipp
    end interface
 
    public :: kipp_load, kipp_choose_device, kipp_render, kipp_save, &
-             kipp_close, kipp_autoscale, kipp_rebuild, kipp_interact, kipp_wait_click, &
+             kipp_close, kipp_autoscale, kipp_rebuild, kipp_interact, kipp_wait_input, &
              kipp_action, kipp_window_center, kipp_list_fields, st, nmodels
 
    ! physical constants
@@ -440,17 +440,18 @@ contains
       end do
    end subroutine kipp_interact
 
-   ! Block at the REPL prompt until stdin has input or the plot window is
-   ! clicked; true on a click.  Only watches a terminal: gfortran buffers
-   ! piped stdin, so poll could miss lines it has already read.
-   logical function kipp_wait_click()
-      kipp_wait_click = .false.
+   ! Block at the REPL prompt until stdin has input (0), the plot window is
+   ! clicked (1) or its close button is pressed, now or in cursor mode (-1).
+   ! Only watches a terminal: gfortran buffers piped stdin, so poll could
+   ! miss lines it has already read.
+   integer function kipp_wait_input()
+      kipp_wait_input = 0
       if (.not. st%interactive .or. st%devid <= 0) return
       if (c_isatty(0_c_int) == 0) return
       flush (output_unit)
       call giza_select_device(st%devid)
-      kipp_wait_click = (giza_wait_fd_or_click(0_c_int) == 1)
-   end function kipp_wait_click
+      kipp_wait_input = giza_wait_fd_or_click(0_c_int)
+   end function kipp_wait_input
 
    ! One cursor-mode action: key ch acting at world position (x, y), in
    ! the window coordinates giza reports (log10 space on a log axis).
