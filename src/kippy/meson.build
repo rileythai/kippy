@@ -34,8 +34,8 @@ if host_machine.system() == 'darwin'
   giza_lib_dirs = [bindir, false]
   origin = '@loader_path'
 else
-  giza_libs = ['libgiza.so.2', 'libgiza.so.2.0.0', 'libgiza.so']
-  giza_lib_dirs = [bindir, false, false]
+  giza_libs = ['libgiza.so.2', 'libgiza.so']
+  giza_lib_dirs = [bindir, false]
   origin = '$ORIGIN'
 endif
 
