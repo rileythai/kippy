@@ -23,7 +23,10 @@ When `DISPLAY` is non-empty, `convview` will open an interactive `/xw` window. I
 renders once and enters Cursor mode (see below) before showing the `kipp>` prompt.
 On macOS the window needs XQuartz (see [macOS](install.md#macos)).
 
-Press `q` or `Esc` in the plot window to leave cursor mode and reach the prompt for REPL commands (see below).
+Press `q`, `Esc` or `Ctrl-C` in the plot window to leave cursor mode and reach the prompt for REPL commands (see below).
+Click the plot window (left, middle or right button) at the prompt to enter cursor mode again; the click itself does nothing else.
+Closing the plot window quits `convview`, from cursor mode or the prompt.
+Clicks and closing are only watched when standard input is a terminal and `KIPP_SCRIPT` is not set.
 
 ## Cursor mode
 
@@ -47,10 +50,10 @@ in the current linear or logarithmic window coordinates.
 | `p` | Copy a PNG snapshot to the system clipboard, with `wl-copy` or `xclip` on Linux and `osascript` on macOS. |
 | `S` | Save a numbered PDF snapshot named `convview_NNNN.pdf`. |
 | `?` | Print cursor-mode help. |
-| `q` or Esc | Leave cursor mode and return to the REPL. |
+| `q`, Esc, or `Ctrl-C` | Leave cursor mode and return to the REPL. |
 
 PNG and PDF snapshots share one counter, beginning at `0001`. During a range
-or rectangle selection, `q` or `Esc` cancels that selection.
+or rectangle selection, `q`, `Esc` or `Ctrl-C` cancels that selection.
 
 ## REPL commands
 
@@ -71,7 +74,7 @@ Commands and arguments are whitespace-separated and case-sensitive.
 | `fields` | `columns` | - | List the fixed color selectors and the registered source columns, including each column's linear or logarithmic scale and value range. |
 | `save` | - | `<file.png\|file.pdf>` | Render once to the named file. A name ending in `.pdf` creates a fixed 3.5-inch-wide, one-column PDF page; `.png` creates a PNG. Other suffixes are treated as part of a PNG prefix and `.png` is appended. |
 | `key` | - | `<char> [x y]` | When `KIPP_SCRIPT` is set, run one cursor-mode action. Only the first character is used. Coordinates are in the current plot window coordinate system and default to the view center; on a logarithmic axis they are log10 coordinates. Without `KIPP_SCRIPT`, the command is rejected as unknown. |
-| `cursor` | `i`, `interact` | - | Enter cursor mode. This requires an interactive `/xw` device. |
+| `cursor` | `i`, `interact` | - | Enter cursor mode. This requires an interactive `/xw` device. Clicking the plot window at the prompt does the same. |
 | `reset` | - | - | Restore automatic limits on both axes, autoscale, and render. |
 | `redraw` | `r` | - | Render the current view again. |
 | `help` | `h`, `?` | - | Print the REPL command summary. |

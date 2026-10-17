@@ -22,6 +22,7 @@
 ! (KEPLER .cnv, MESA profiles, .kipp streams, MONASH seq)
 module kipp
 
+   use, intrinsic :: iso_fortran_env, only: output_unit
    use iso_c_binding, only: c_int
    use typedef, only: int32, real64
    use convdata, only: data, fieldlayer, &
@@ -38,10 +39,15 @@ module kipp
          import :: c_int
          integer(c_int) :: pid
       end function c_getpid
+      function c_isatty(fd) bind(C, name='isatty') result(tty)
+         import :: c_int
+         integer(c_int), value :: fd
+         integer(c_int) :: tty
+      end function c_isatty
    end interface
 
    public :: kipp_load, kipp_choose_device, kipp_render, kipp_save, &
-             kipp_close, kipp_autoscale, kipp_rebuild, kipp_interact, &
+             kipp_close, kipp_autoscale, kipp_rebuild, kipp_interact, kipp_wait_input, &
              kipp_action, kipp_window_center, kipp_list_fields, st, nmodels
 
    ! physical constants
@@ -85,6 +91,7 @@ module kipp
    character(len=1), parameter :: K_SCRLT = achar(12)
    character(len=1), parameter :: K_SCRRT = achar(18)
    character(len=1), parameter :: K_ESC = achar(27)
+   character(len=1), parameter :: K_CTRLC = achar(3)
 
    integer(int32) :: nsnap = 0     ! numbered snapshots from cursor mode
 
@@ -404,7 +411,8 @@ contains
    ! Interactive cursor mode: block on key presses / mouse clicks in the
    ! /xw window and zoom or pan about the cursor position.  Every action
    ! uses the world coordinates giza reports for the cursor, so keys act
-   ! "where the mouse is".  Returns to the caller (the REPL) on q or Esc.
+   ! "where the mouse is".  Returns to the caller (the REPL) on q, Esc or
+   ! Ctrl-C.
    subroutine kipp_interact()
       real(real64) :: x, y
       character(len=1) :: ch
@@ -432,6 +440,19 @@ contains
       end do
    end subroutine kipp_interact
 
+   ! Block at the REPL prompt until stdin has input (0), the plot window is
+   ! clicked (1) or its close button is pressed, now or in cursor mode (-1).
+   ! Only watches a terminal: gfortran buffers piped stdin, so poll could
+   ! miss lines it has already read.
+   integer function kipp_wait_input()
+      kipp_wait_input = 0
+      if (.not. st%interactive .or. st%devid <= 0) return
+      if (c_isatty(0_c_int) == 0) return
+      flush (output_unit)
+      call giza_select_device(st%devid)
+      kipp_wait_input = giza_wait_fd_or_click(0_c_int)
+   end function kipp_wait_input
+
    ! One cursor-mode action: key ch acting at world position (x, y), in
    ! the window coordinates giza reports (log10 space on a log axis).
    ! done is set when ch asks to leave cursor mode.  Shared by the
@@ -449,12 +470,12 @@ contains
       done = .false.
       xa = x; ya = y
       select case (ch)
-      case ('q', K_ESC)                        ! back to the REPL
+      case ('q', K_ESC, K_CTRLC)               ! back to the REPL
          done = .true.
       case (K_LCLICK)                          ! drag-rectangle zoom
          x2 = xa; y2 = ya; ch2 = ' '
          ierr = giza_band(giza_band_rectangle, 0, xa, ya, x2, y2, ch2)
-         if (ierr == 0 .and. ch2 /= K_ESC .and. ch2 /= 'q') then
+         if (ierr == 0 .and. ch2 /= K_ESC .and. ch2 /= K_CTRLC .and. ch2 /= 'q') then
             call set_xrange_w(xa, x2)
             call set_yrange_w(ya, y2)
             call kipp_render()
@@ -462,14 +483,14 @@ contains
       case ('x')                               ! select an x range
          x2 = xa; y2 = ya; ch2 = ' '
          ierr = giza_band(giza_band_vertlines, 0, xa, ya, x2, y2, ch2)
-         if (ierr == 0 .and. ch2 /= K_ESC .and. ch2 /= 'q') then
+         if (ierr == 0 .and. ch2 /= K_ESC .and. ch2 /= K_CTRLC .and. ch2 /= 'q') then
             call set_xrange_w(xa, x2)
             call kipp_render()
          end if
       case ('y')                               ! select a y range
          x2 = xa; y2 = ya; ch2 = ' '
          ierr = giza_band(giza_band_horzlines, 0, xa, ya, x2, y2, ch2)
-         if (ierr == 0 .and. ch2 /= K_ESC .and. ch2 /= 'q') then
+         if (ierr == 0 .and. ch2 /= K_ESC .and. ch2 /= K_CTRLC .and. ch2 /= 'q') then
             call set_yrange_w(ya, y2)
             call kipp_render()
          end if
@@ -543,7 +564,7 @@ contains
       print '(a)', '  h j k l          pan left down up right  middle-click / c  centre here'
       print '(a)', '  r                reset to full view      s / S  save png / pdf snapshot'
       print '(a)', '  p                copy png to clipboard'
-      print '(a)', '  ?                this help               q / Esc  back to prompt'
+      print '(a)', '  ?                this help               q / Esc / Ctrl-C  back to prompt'
    end subroutine cursor_help
 
    ! inverse of xtrans/ytrans2: map a world (window) coordinate back to the
