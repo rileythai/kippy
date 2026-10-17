@@ -42,6 +42,8 @@ uv pip install -e .        # or: pip install .
 `libgiza.so.2` installs under `kippy/bin`; the python launchers inject that dir
 on `LD_LIBRARY_PATH` because meson-python leaves the giza custom-target rpath
 unpatched. Do not remove that injection without an equivalent rpath fix.
+On macOS the library is `libgiza.2.dylib`; `tools/build_giza.py` resets its
+install name to `@rpath/...` so the `@loader_path` rpath resolves it.
 
 ## Git
 

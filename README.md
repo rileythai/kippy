@@ -27,7 +27,9 @@ Full documentation: <https://kippy.rileythai.com>
 
 ## Install
 
-kippy runs on Linux.
+kippy runs on Linux and macOS (wheels for macOS 15 or newer). On macOS the
+interactive window needs [XQuartz](https://www.xquartz.org/); see the
+[macOS notes](https://kippy.rileythai.com/install/#macos).
 
 ```bash
 pip install kippy
@@ -35,7 +37,8 @@ pip install kippy
 
 Building from source (the sdist, or a clone) compiles the Fortran core and the
 bundled giza library, so it needs `gfortran`, `meson`, `ninja`, and the cairo,
-libx11, and freetype2 development packages:
+libx11, and freetype2 development packages (on macOS:
+`brew install gcc pkgconf cairo`):
 
 ```bash
 git clone --recurse-submodules https://github.com/rileythai/kippy

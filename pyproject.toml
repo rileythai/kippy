@@ -17,6 +17,7 @@ classifiers = [
     "Environment :: Console",
     "Environment :: X11 Applications",
     "Intended Audience :: Science/Research",
+    "Operating System :: MacOS",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Fortran",
     "Programming Language :: Python :: 3",
@@ -55,6 +56,12 @@ dev = ["meson-python>=0.18.0", "meson>=1.1.0", "ninja"]
 no-build-isolation-package = ["kippy"]
 
 [tool.cibuildwheel]
-build = "cp*-manylinux_*"
+build = ["cp*-manylinux_*", "cp*-macosx_*"]
 skip = "cp31?t-*"
 before-all = "dnf install -y cairo-devel libX11-devel freetype-devel"
+
+[tool.cibuildwheel.macos]
+before-all = "brew install gcc pkgconf cairo"
+# delocate bundles homebrew bottles, which target the runner's own macos
+environment = { MACOSX_DEPLOYMENT_TARGET = "15.0" }
+test-command = "python {project}/tools/smoke_test.py"

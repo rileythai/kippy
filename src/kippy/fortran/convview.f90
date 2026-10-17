@@ -30,7 +30,8 @@ program convview
    implicit none (type, external)
 
    character(len=512) :: line
-   character(len=64)  :: cmd, a1, a2, a3
+   character(len=64)  :: cmd, a2, a3
+   character(len=256) :: a1   ! carries save paths, giza's filename cap
    character(len=256) :: fname
    character(len=8)   :: envbuf
    integer :: ios, envlen, envstat
