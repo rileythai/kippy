@@ -23,7 +23,7 @@
 module kipp
 
    use, intrinsic :: iso_fortran_env, only: output_unit
-   use iso_c_binding, only: c_int
+   use iso_c_binding, only: c_int, c_double
    use typedef, only: int32, real64
    use convdata, only: data, fieldlayer, &
                        FIELD_NBINS, nfields, field_names, &
@@ -45,6 +45,14 @@ module kipp
          integer(c_int), value :: fd
          integer(c_int) :: tty
       end function c_isatty
+      ! giza's own giza_round binding passes x by reference to a by-value
+      ! argument, so nsub never comes back
+      function c_giza_round(x, nsub) bind(C, name='giza_round') result(r)
+         import :: c_int, c_double
+         real(c_double), value :: x
+         integer(c_int), intent(out) :: nsub
+         real(c_double) :: r
+      end function c_giza_round
    end interface
 
    public :: kipp_load, kipp_choose_device, kipp_render, kipp_save, &
@@ -736,7 +744,8 @@ contains
    subroutine draw_scene()
       character(len=16) :: xopt, yopt
       character(len=64) :: xlabel, ylabel
-      real(real64) :: wx1, wx2, wy1, wy2, vx2
+      real(real64) :: wx1, wx2, wy1, wy2, vx2, ystep
+      integer(c_int) :: nsub
       integer(int32) :: layer, fidx
       logical :: colored
 
@@ -802,10 +811,16 @@ contains
       ! axes on top
       call giza_set_colour_index(1)
       call giza_set_line_width(1.d0)
-      xopt = 'BCNST'; yopt = 'BCNST'
+      xopt = 'BCNST'; yopt = 'BCST'
       if (st%xlog) xopt = 'BCNSTL'
-      if (st%ylog) yopt = 'BCNSTL'
-      call giza_box(trim(xopt), 0.0, 0, trim(yopt), 0.0, 0)
+      if (st%ylog) yopt = 'BCSTL'
+      ! giza_box's automatic y step, which kippy's viewport keeps at its cap of
+      ! 0.2 of the range (pixel-checked on png and pdf with giza's default
+      ! font), passed explicitly so draw_ylabels' labels land on the ticks
+      ystep = 1.d0; nsub = 1
+      if (.not. st%ylog) ystep = c_giza_round(0.2d0*(wy2 - wy1), nsub)
+      call giza_box(trim(xopt), 0.0, 0, trim(yopt), real(ystep), nsub)
+      call draw_ylabels(wy1, wy2, ystep)
       call labels(xlabel, ylabel)
       call giza_label(trim(xlabel), trim(ylabel), '')
 
@@ -823,6 +838,53 @@ contains
       end if
       call draw_models(wx1, wx2, wy1, wy2, vx2)
    end subroutine draw_scene
+
+   ! y tick labels as giza_box 'N' writes them (same strings and placement),
+   ! except labels whose text, written along the axis, would hang below the
+   ! x axis into the x tick labels
+   subroutine draw_ylabels(wy1, wy2, step)
+      real(real64), intent(in) :: wy1, wy2, step
+      integer(int32), parameter :: MANT(2) = [2, 5]   ! extra labels on short log axes
+      real(real64) :: px1, px2, py1, py2
+      integer(int32) :: i, k, np, nv
+      character(len=32) :: txt
+
+      call giza_get_viewport(giza_units_mm, px1, px2, py1, py2)
+      if (st%ylog) then
+         do i = nint(wy1), nint(wy2)
+            select case (i)
+            case (0); txt = '1'
+            case (1); txt = '10'
+            case default; write (txt, '(a,i0,a)') '10^{', i, '}'
+            end select
+            call ylabel(real(i, real64))
+         end do
+         if (wy2 - wy1 < 2.d0) then
+            do i = nint(wy1) - 1, nint(wy2)
+               do k = 1, 2
+                  call giza_format_number(MANT(k), i, giza_number_format_auto, txt)
+                  call ylabel(i + log10(real(MANT(k), real64)))
+               end do
+            end do
+         end if
+      else
+         np = floor(log10(step)); nv = nint(step/10.d0**np)
+         do i = nint(wy1/step), nint(wy2/step)
+            call giza_format_number(i*nv, np, giza_number_format_auto, txt)
+            call ylabel(i*step)
+         end do
+      end if
+   contains
+      subroutine ylabel(v)
+         real(real64), intent(in) :: v
+         real(real64) :: ratio, xlen, ylen
+         ratio = (v - wy1)/(wy2 - wy1)
+         if (ratio < 0.d0 .or. ratio > 1.d0) return
+         call giza_qtextlen(giza_units_mm, trim(txt), xlen, ylen)
+         if (ratio*(py2 - py1) < 0.5d0*xlen) return
+         call giza_annotate('L', 0.7, real(ratio), 0.5, trim(txt))
+      end subroutine ylabel
+   end subroutine draw_ylabels
 
    !---------------------------------------------------------------------
    ! draw_colorbar -- colorbar in the right margin
