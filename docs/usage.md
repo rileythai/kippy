@@ -50,6 +50,7 @@ in the current linear or logarithmic window coordinates.
 | `p` | Copy a PNG snapshot to the system clipboard, with `wl-copy` or `xclip` on Linux and `osascript` on macOS. |
 | `S` | Save a numbered PDF snapshot named `convview_NNNN.pdf`. |
 | `g` | Toggle the cell and time boundary grid (see `grid` below). |
+| `m` | Toggle the model-number strip (see `models` below). |
 | `?` | Print cursor-mode help. |
 | `q`, Esc, or `Ctrl-C` | Leave cursor mode and return to the REPL. |
 
