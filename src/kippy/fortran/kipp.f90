@@ -549,6 +549,8 @@ contains
          call kipp_save(trim(snap)//'.pdf')
       case ('g')                               ! toggle the cell/time grid
          st%showgrid = .not. st%showgrid; call kipp_render()
+      case ('m')                               ! toggle the model-number strip
+         st%showmodels = .not. st%showmodels; call kipp_render()
       case ('?')
          call cursor_help()
       case default
@@ -571,7 +573,8 @@ contains
       print '(a)', '  h j k l          pan left down up right  middle-click / c  centre here'
       print '(a)', '  r                reset to full view      s / S  save png / pdf snapshot'
       print '(a)', '  p                copy png to clipboard   g  toggle cell/time grid'
-      print '(a)', '  ?                this help               q / Esc / Ctrl-C  back to prompt'
+      print '(a)', '  m                toggle model strip      ?  this help'
+      print '(a)', '  q / Esc / Ctrl-C back to prompt'
    end subroutine cursor_help
 
    ! inverse of xtrans/ytrans2: map a world (window) coordinate back to the
