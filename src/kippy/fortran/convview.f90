@@ -36,7 +36,7 @@ program convview
    character(len=8)   :: envbuf
    integer :: ios, envlen, envstat
    real(8) :: v1, v2
-   logical :: scripted, done
+   logical :: scripted, done, ok
 
    ! KIPP_SCRIPT enables the hidden `key` command so a script (e.g. a
    ! fifo) can drive cursor-mode actions through the REPL, and skips the
@@ -122,17 +122,32 @@ program convview
                       trim(a1) == 'rsun')
          st%yauto = .true.; call kipp_autoscale(); call kipp_render()
       case ('color', 'colour')
-         if (len_trim(a1) > 0) st%cfield = a1
-         call kipp_render()
+         if (len_trim(a1) == 0) then
+            call kipp_list_fields()
+         else
+            call kipp_set_cfield(trim(a1), ok)
+            if (ok) then
+               call kipp_render()
+            else
+               print *, 'no color entry ', trim(a1), '   (type color for the list)'
+            end if
+         end if
       case ('cmap', 'colormap', 'colourmap')
-         select case (trim(a1))
-         case ('teal', 'viridis', 'blue', 'gray', 'grey')
-            st%cmap = a1; call kipp_render()
-         case default
-            print *, 'cmap teal|viridis|blue|gray'
-         end select
+         if (len_trim(a1) == 0) then
+            call kipp_list_cmaps()
+         else
+            call kipp_set_cmap(trim(a1), ok)
+            if (ok) then
+               call kipp_render()
+            else
+               print *, 'unknown colormap ', trim(a1), '   (type cmap for the list)'
+            end if
+         end if
       case ('models')
          st%showmodels = (trim(a1) == 'on')
+         call kipp_render()
+      case ('grid')
+         st%showgrid = (trim(a1) == 'on')
          call kipp_render()
       case ('fields', 'columns')
          call kipp_list_fields()
@@ -212,9 +227,9 @@ contains
       print '(a)', '  xlim <min> <max>      ylim <min> <max>'
       print '(a)', '  xscale lin|log        yscale lin|log'
       print '(a)', '  xaxis time|model      yaxis mass|radius      units solar|cgs'
-      print '(a)', '  color convtype|epsnuc|neu|<column>   fields  (list columns)'
-      print '(a)', '  cmap teal|viridis|blue|gray   (colour-field colormap)'
-      print '(a)', '  models on|off'
+      print '(a)', '  color <name|number>   colour field (color alone lists them)'
+      print '(a)', '  cmap <name|number>    colour-field colormap, _r reverses (cmap alone lists them)'
+      print '(a)', '  models on|off         grid on|off   (cell and time boundaries)'
       print '(a)', '  cursor (i)            interactive zoom/pan (or click the plot window)'
       print '(a)', '  reset   redraw   save <file.png|file.pdf>   help   quit'
    end subroutine help
