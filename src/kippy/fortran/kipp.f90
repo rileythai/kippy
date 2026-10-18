@@ -29,6 +29,7 @@ module kipp
                        FIELD_NBINS, nfields, field_names, &
                        field_vmin, field_vmax, field_log
    use mesaload, only: load_convection, cnv_loaded
+   use cmaps, only: cmap_rgb, CMAP_NAMES, NCMAPS
    use giza
 
    implicit none
@@ -48,13 +49,16 @@ module kipp
 
    public :: kipp_load, kipp_choose_device, kipp_render, kipp_save, &
              kipp_close, kipp_autoscale, kipp_rebuild, kipp_interact, kipp_wait_input, &
-             kipp_action, kipp_window_center, kipp_list_fields, st, nmodels
+             kipp_action, kipp_window_center, kipp_list_fields, kipp_set_cfield, &
+             kipp_list_cmaps, kipp_set_cmap, st, nmodels
 
    ! physical constants
    real(real64), parameter :: SOLMASS = 1.9892d33      ! g
    real(real64), parameter :: SOLRAD = 6.9599d10      ! cm
    real(real64), parameter :: YR = 31556952.d0    ! s (Gregorian year)
    real(real64), parameter :: LOGMIN = 1.d-99
+   ! colorbar tick-label height (x chs) and title offset (tick-label heights)
+   real(real64), parameter :: CB_TICK = 0.8d0, CB_TITLE = 3.5d0
 
    ! convection-type codes
    !   ' '=0 radiative  'N'=1 neutral  'O'=2 overshoot
@@ -71,7 +75,7 @@ module kipp
       real(real64)      :: xmin = 0, xmax = 0, ymin = 0, ymax = 0
       logical           :: xauto = .true., yauto = .true.
       character(len=32) :: cfield = 'epsnuc'   ! convtype | epsnuc | neu | any field name
-      character(len=16) :: cmap = 'teal'       ! colour-field colormap: teal | viridis | blue | gray
+      character(len=16) :: cmap = 'teal'       ! colour-field colormap: a CMAP_NAMES entry, '_r' reverses
       character(len=64) :: device = '/xw'      ! ?
       character(len=64) :: prefix = 'convview'
       logical           :: interactive = .true.
@@ -762,7 +766,7 @@ contains
       fidx = 0
       if (layer < 0) fidx = field_of_cfield()
       colored = (layer >= 0 .or. fidx > 0)
-      vx2 = merge(0.89d0, 0.95d0, colored)
+      vx2 = merge(0.84d0, 0.95d0, colored)
 
       ! there used to be a bug in giza_open_device that didnt let it to respect
       ! clipping, so you had to call it twice to absorb the default one.
@@ -820,32 +824,26 @@ contains
    !---------------------------------------------------------------------
    ! draw_colorbar -- colorbar in the right margin
    !
-   ! one column of colored cells with the log10 level value
-   ! inside each (vertical text, white on the deep cells), gain stacked
-   ! at the top (deepest blue = strongest gain), loss at the bottom
-   ! (deepest magenta), a '...' separator at the zero crossing, and a
-   ! second column with GAIN / log(erg/g/s) / LOSS annotations.
+   ! a framed strip of coloured cells, gain stacked at the top (deepest
+   ! blue = strongest gain) and loss at the bottom (deepest magenta), split
+   ! by a half-cell gap.  each cell's log10 level is written beside it (a
+   ! level is nint(log10|eps|), so it names the cell, not a boundary); GAIN /
+   ! title / LOSS run up the outer edge.
    subroutine draw_colorbar(layer)
       integer(int32), intent(in) :: layer
-      integer(int32) :: gmax, lmax, gmin, lmin, nlev, lev
+      integer(int32) :: gmax, lmax, gmin, lmin, lev
       real(real64) :: dy, y0, f
-      logical :: showzero
       character(len=16) :: txt
 
       if (.not. ecache(layer)%valid) call build_energy_cache(layer)
       gmax = ecache(layer)%gmax; lmax = ecache(layer)%lmax
       call level_mins(layer, gmin, lmin)
       lmin = max(lmin, gmin)             ! convplot clamps loss min to gain min
-      showzero = (gmax > 0 .and. lmax > 0)
-      nlev = gmax + lmax
-      if (showzero) nlev = nlev + 1
-      if (nlev <= 0) return
+      if (gmax + lmax <= 0) return
 
-      dy = 1.d0/real(nlev, real64)
-      call giza_set_viewport(0.90d0, 0.99d0, 0.12d0, 0.96d0)
-      call giza_set_window(0.d0, 1.d0, 0.d0, 1.d0)
+      dy = 1.d0/(real(gmax + lmax, real64) + merge(0.5d0, 0.d0, gmax > 0 .and. lmax > 0))
+      call colorbar_viewport()
       call giza_set_fill(1)
-      call giza_set_character_height(0.65d0*chs)
 
       ! gain cells from the top; colours match draw_energy exactly
       do lev = 1, gmax
@@ -853,10 +851,9 @@ contains
          call giza_set_colour_representation(7, 1.d0 - 0.85d0*f, 1.d0 - 0.85d0*f, 1.d0)
          call giza_set_colour_index(7)
          y0 = 1.d0 - real(gmax - lev + 1, real64)*dy
-         call giza_rectangle(0.d0, 0.40d0, y0, y0 + dy)
-         call giza_set_colour_index(merge(0, 1, lev > 6))
+         call giza_rectangle(0.d0, 1.d0, y0, y0 + dy)
          write (txt, '(i0)') gmin + lev - 1
-         call giza_ptext(0.20d0, y0 + 0.5d0*dy, 90.d0, 0.5d0, trim(txt))
+         call cell_label(y0 + 0.5d0*dy, trim(txt))
       end do
       ! loss cells from the bottom
       do lev = 1, lmax
@@ -864,20 +861,48 @@ contains
          call giza_set_colour_representation(7, 1.d0, 1.d0 - 0.85d0*f, 1.d0)
          call giza_set_colour_index(7)
          y0 = real(lmax - lev, real64)*dy
-         call giza_rectangle(0.d0, 0.40d0, y0, y0 + dy)
-         call giza_set_colour_index(merge(0, 1, lev > 6))
+         call giza_rectangle(0.d0, 1.d0, y0, y0 + dy)
          write (txt, '(i0)') lmin + lev - 1
-         call giza_ptext(0.20d0, y0 + 0.5d0*dy, 90.d0, 0.5d0, trim(txt))
+         call cell_label(y0 + 0.5d0*dy, trim(txt))
       end do
 
       call giza_set_colour_index(1)
-      if (showzero) &
-         call giza_ptext(0.20d0, (real(lmax, real64) + 0.5d0)*dy, 90.d0, 0.5d0, '...')
-      if (gmax > 0) call giza_ptext(0.60d0, 1.d0, 90.d0, 1.d0, 'GAIN')
-      if (lmax > 0) call giza_ptext(0.60d0, 0.d0, 90.d0, 0.d0, 'LOSS')
-      call giza_ptext(0.60d0, 0.5d0, 90.d0, 0.5d0, 'log(erg/g/s)')
+      call giza_set_fill(2)
+      if (gmax > 0) call giza_rectangle(0.d0, 1.d0, 1.d0 - real(gmax, real64)*dy, 1.d0)
+      if (lmax > 0) call giza_rectangle(0.d0, 1.d0, 0.d0, real(lmax, real64)*dy)
+      call giza_set_fill(1)
+      if (gmax > 0) call colorbar_title(1.d0, 1.d0, CB_TICK, 'GAIN')
+      if (lmax > 0) call colorbar_title(0.d0, 0.d0, CB_TICK, 'LOSS')
+      call colorbar_title(0.5d0, 0.5d0, 1.d0, &
+         merge('log \ge_{nuc} (erg g^{-1} s^{-1})', 'log \ge_{\gn} (erg g^{-1} s^{-1})', layer /= 2))
       call giza_set_character_height(chs)
    end subroutine draw_colorbar
+
+   ! colorbar strip viewport in the right margin, window [0,1]^2, tick text size
+   subroutine colorbar_viewport()
+      call giza_set_viewport(0.86d0, 0.88d0, 0.12d0, 0.96d0)
+      call giza_set_window(0.d0, 1.d0, 0.d0, 1.d0)
+      call giza_set_character_height(CB_TICK*chs)
+   end subroutine colorbar_viewport
+
+   ! horizontal label beside the strip at window height y
+   subroutine cell_label(y, txt)
+      real(real64), intent(in) :: y
+      character(len=*), intent(in) :: txt
+      call giza_set_colour_index(1)
+      call giza_annotate('RV', 0.5, real(y), 0.0, txt)
+   end subroutine cell_label
+
+   ! text up the colorbar's outer side at fraction y of its height, past tick
+   ! labels of up to ~5 characters; h scales chs
+   subroutine colorbar_title(y, fjust, h, txt)
+      real(real64), intent(in) :: y, fjust, h
+      character(len=*), intent(in) :: txt
+      call giza_set_colour_index(1)
+      call giza_set_character_height(h*chs)
+      call giza_annotate('R', real(CB_TITLE*CB_TICK/h), real(y), real(fjust), txt)
+      call giza_set_character_height(CB_TICK*chs)
+   end subroutine colorbar_title
 
    !---------------------------------------------------------------------
    subroutine draw_models(wx1, wx2, wy1, wy2, vx2)
@@ -1737,22 +1762,19 @@ contains
       end associate
    end subroutine draw_field
 
-   ! colorbar for a generic column field: a smooth colormap strip spanning
-   ! [vmin, vmax] across the whole run, value ticks written up the strip, and
-   ! the column name (with 'log' when log-binned) as a vertical title.
+   ! colorbar for a generic column field: a framed strip of the FIELD_NBINS
+   ! contour colours spanning [vmin, vmax] across the whole run, giza's round
+   ! value ticks on its right edge, and the column name (with 'log' when
+   ! log-binned) up the page edge.
    subroutine draw_field_colorbar(f)
       integer(int32), intent(in) :: f
-      integer(int32), parameter :: NTICK = 5
-      integer(int32) :: lev, k
-      real(real64) :: dy, y0, t, r, g, b, frac
-      character(len=24) :: txt
-      character(len=40) :: title
+      integer(int32) :: lev, p
+      real(real64) :: dy, y0, t, r, g, b, vlo, vhi, vmag
+      character(len=48) :: title
+      character(len=8) :: txt
 
-      call giza_set_viewport(0.90d0, 0.99d0, 0.12d0, 0.96d0)
-      call giza_set_window(0.d0, 1.d0, 0.d0, 1.d0)
+      call colorbar_viewport()
       call giza_set_fill(1)
-      call giza_set_character_height(0.65d0*chs)
-
       dy = 1.d0/real(FIELD_NBINS, real64)
       do lev = 1, FIELD_NBINS
          t = (real(lev, real64) - 0.5d0)/real(FIELD_NBINS, real64)
@@ -1760,95 +1782,100 @@ contains
          call giza_set_colour_representation(7, r, g, b)
          call giza_set_colour_index(7)
          y0 = real(lev - 1, real64)*dy
-         call giza_rectangle(0.d0, 0.40d0, y0, y0 + dy)
+         call giza_rectangle(0.d0, 1.d0, y0, y0 + dy)
       end do
 
-      ! value ticks written up the strip, text colour chosen from the strip
-      ! luminance under each tick (dark text on light cells, light on dark) so
-      ! they stay legible for any cmap (teal is light at the low end)
-      do k = 0, NTICK
-         frac = real(k, real64)/real(NTICK, real64)
-         call fmt_field_value(f, frac, txt)
-         call colormap(frac, r, g, b)
-         call giza_set_colour_index(merge(0, 1, 0.299d0*r + 0.587d0*g + 0.114d0*b < 0.5d0))
-         ! inset the end ticks so they clear the strip edges / plot frame
-         call giza_ptext(0.20d0, 0.03d0*chs + frac*(1.d0 - 0.06d0*chs), 90.d0, 0.5d0, trim(txt))
-      end do
-
+      ! giza parses '_' as a subscript and has no escape for it
       title = trim(field_names(f))
-      if (field_log(f)) title = 'log '//trim(title)
+      do while (index(title, '_') > 0)
+         title(index(title, '_'):index(title, '_')) = ' '
+      end do
+      vlo = field_vmin(f); vhi = field_vmax(f)
+      if (field_log(f)) then
+         vlo = log10(max(vlo, LOGMIN)); vhi = log10(max(vhi, LOGMIN))
+         title = 'log '//trim(title)
+      else
+         ! move a power of ten into the title so tick labels stay short
+         vmag = max(abs(vlo), abs(vhi))
+         if (vmag >= 1.d4 .or. (vmag > 0.d0 .and. vmag < 1.d-2)) then
+            p = floor(log10(vmag))
+            vlo = vlo/10.d0**p; vhi = vhi/10.d0**p
+            write (txt, '(i0)') p
+            title = trim(title)//' (10^{'//trim(txt)//'})'
+         end if
+      end if
       call giza_set_colour_index(1)
-      call giza_ptext(0.65d0, 0.5d0, 90.d0, 0.5d0, trim(title))
+      call giza_box('BC', 0.0, 0, 'B', 0.0, 0)
+      ! a constant field has no value range to tick
+      if (vhi > vlo) then
+         call giza_set_window(0.d0, 1.d0, vlo, vhi)
+         call giza_box('', 0.0, 0, 'CMTIV', 0.0, 0)
+      else
+         call giza_box('', 0.0, 0, 'C', 0.0, 0)
+      end if
+
+      call colorbar_title(0.5d0, 0.5d0, 1.d0, trim(title))
       call giza_set_character_height(chs)
    end subroutine draw_field_colorbar
 
-   ! format the field value at fractional position frac in [0,1] up the strip
-   subroutine fmt_field_value(f, frac, txt)
-      integer(int32), intent(in) :: f
-      real(real64), intent(in) :: frac
-      character(len=*), intent(out) :: txt
-      real(real64) :: a, b, v
-      a = field_vmin(f); b = field_vmax(f)
-      if (field_log(f)) then
-         a = log10(max(a, LOGMIN)); b = log10(max(b, LOGMIN))
-         v = a + frac*(b - a)          ! label the log value directly
-         write (txt, '(f0.2)') v
-      else
-         v = a + frac*(b - a)
-         if (abs(v) >= 1.d4 .or. (v /= 0.d0 .and. abs(v) < 1.d-2)) then
-            write (txt, '(es9.2)') v
-         else
-            write (txt, '(f0.3)') v
-         end if
-      end if
-   end subroutine fmt_field_value
-
-   ! sequential colour-field colormap mapping t in [0,1] to r,g,b in [0,1],
-   ! selected by st%cmap.  default 'teal' fades white -> teal-blue (the epsnuc
-   ! look); 'viridis' is a perceptual approximation, 'blue' the exact epsnuc
-   ! gain ramp, 'gray' a print-friendly ramp.  unknown names fall back to teal.
+   ! colour-field colormap st%cmap at t in [0,1]; a '_r' suffix reverses it
    pure subroutine colormap(t, r, g, b)
       real(real64), intent(in) :: t
       real(real64), intent(out) :: r, g, b
-      real(real64) :: x
-      x = min(max(t, 0.d0), 1.d0)
-      select case (trim(st%cmap))
-      case ('viridis')
-         call cmap_viridis(x, r, g, b)
-      case ('blue')
-         r = 1.d0 - 0.85d0*x; g = r; b = 1.d0
-      case ('gray', 'grey')
-         r = 1.d0 - x; g = r; b = r
-      case default                          ! 'teal': white -> teal-blue
-         r = 1.d0 + x*(0.09d0 - 1.d0)
-         g = 1.d0 + x*(0.42d0 - 1.d0)
-         b = 1.d0 + x*(0.67d0 - 1.d0)
-      end select
+      integer(int32) :: n
+      n = len_trim(st%cmap)
+      if (is_reversed(st%cmap)) then
+         call cmap_rgb(st%cmap(1:n - 2), 1.d0 - t, r, g, b)
+      else
+         call cmap_rgb(st%cmap(1:n), t, r, g, b)
+      end if
    end subroutine colormap
 
-   ! viridis approximation (8 anchor points, linear between); low = dark
-   ! blue/purple, high = yellow
-   pure subroutine cmap_viridis(x, r, g, b)
-      real(real64), intent(in) :: x
-      real(real64), intent(out) :: r, g, b
-      integer(int32), parameter :: NC = 8
-      real(real64), parameter :: cr(NC) = &
-         [0.267d0, 0.283d0, 0.254d0, 0.207d0, 0.164d0, 0.478d0, 0.741d0, 0.993d0]
-      real(real64), parameter :: cg(NC) = &
-         [0.005d0, 0.141d0, 0.265d0, 0.372d0, 0.471d0, 0.821d0, 0.873d0, 0.906d0]
-      real(real64), parameter :: cb(NC) = &
-         [0.329d0, 0.458d0, 0.530d0, 0.553d0, 0.558d0, 0.318d0, 0.150d0, 0.144d0]
-      real(real64) :: xx, u
-      integer(int32) :: i0, i1
-      xx = min(max(x, 0.d0), 1.d0)*real(NC - 1, real64)
-      i0 = int(xx) + 1
-      if (i0 >= NC) i0 = NC - 1
-      i1 = i0 + 1
-      u = xx - real(i0 - 1, real64)
-      r = cr(i0) + u*(cr(i1) - cr(i0))
-      g = cg(i0) + u*(cg(i1) - cg(i0))
-      b = cb(i0) + u*(cb(i1) - cb(i0))
-   end subroutine cmap_viridis
+   pure logical function is_reversed(name)
+      character(len=*), intent(in) :: name
+      integer(int32) :: n
+      n = len_trim(name)
+      is_reversed = n > 2
+      if (is_reversed) is_reversed = name(n - 1:n) == '_r'
+   end function is_reversed
+
+   ! 1-based position typed as a plain number, or 0 if s is not one
+   pure integer(int32) function list_index(s)
+      character(len=*), intent(in) :: s
+      integer(int32) :: ios
+      list_index = 0
+      if (len_trim(s) == 0 .or. len_trim(s) > 6) return
+      if (verify(trim(s), '0123456789') /= 0) return
+      read (s, *, iostat=ios) list_index
+      if (ios /= 0) list_index = 0
+   end function list_index
+
+   ! select a colormap by name or by its number in kipp_list_cmaps, either
+   ! optionally suffixed '_r' to reverse it.  ok is false if unknown.
+   subroutine kipp_set_cmap(arg, ok)
+      character(len=*), intent(in) :: arg
+      logical, intent(out) :: ok
+      character(len=len(arg)) :: base
+      integer(int32) :: k
+      logical :: rev
+      rev = is_reversed(arg)
+      base = arg(1:len_trim(arg) - merge(2, 0, rev))
+      if (base == 'grey') base = 'gray'
+      k = findloc(CMAP_NAMES, base, 1)
+      if (k == 0) k = list_index(base)
+      ok = k >= 1 .and. k <= NCMAPS
+      if (ok) st%cmap = trim(CMAP_NAMES(k))//merge('_r', '  ', rev)
+   end subroutine kipp_set_cmap
+
+   subroutine kipp_list_cmaps()
+      integer(int32) :: k, n
+      n = len_trim(st%cmap) - merge(2, 0, is_reversed(st%cmap))
+      print '(a)', 'colormaps (cmap <name|number>, append _r to reverse):'
+      do k = 1, NCMAPS
+         print '(i4,2x,a,a)', k, CMAP_NAMES(k), &
+            merge(' (current)', '          ', CMAP_NAMES(k) == st%cmap(1:n))
+      end do
+   end subroutine kipp_list_cmaps
 
    ! copy a model's level-value / coordinate-index arrays for a layer
    subroutine get_layer(i, layer, vals, idxs, n)
@@ -2143,9 +2170,9 @@ contains
       end if
       if (st%xlog) xlabel = 'log '//trim(xlabel)
       if (st%yaxis == 'radius') then
-         ylabel = merge('radius (Rsun)    ', 'radius (cm)      ', st%ysolar)
+         ylabel = merge('radius (R_\odot)', 'radius (cm)     ', st%ysolar)
       else
-         ylabel = merge('enclosed mass (Msun)', 'enclosed mass (g)   ', st%ysolar)
+         ylabel = merge('enclosed mass (M_\odot)', 'enclosed mass (g)      ', st%ysolar)
       end if
       if (st%ylog) ylabel = 'log '//trim(ylabel)
    end subroutine labels
@@ -2164,10 +2191,10 @@ contains
    subroutine kipp_list_fields()
       integer(int32) :: k
       character(len=8) :: scale
-      print '(a)', 'color selectors:'
-      print '(a)', '  convtype   (no colour field, convection hatch only)'
-      print '(a)', '  epsnuc     nuclear energy layer (log erg/g/s)'
-      print '(a)', '  neu        neutrino energy layer (log erg/g/s)'
+      print '(a)', 'color selectors (color <name|number>):'
+      print '(a)', '   1  convtype   (no colour field, convection hatch only)'
+      print '(a)', '   2  epsnuc     nuclear energy layer (log erg/g/s)'
+      print '(a)', '   3  neu        neutrino energy layer (log erg/g/s)'
       if (.not. allocated(field_names) .or. nfields < 1) then
          print '(a)', '  (no extra column fields in this source)'
          return
@@ -2175,9 +2202,28 @@ contains
       print '(a)', '  column fields (min .. max across the run):'
       do k = 1, nfields
          scale = merge('log ', 'lin ', field_log(k))
-         print '(a,a16,a,a,es11.3,a,es11.3)', '    ', field_names(k), &
+         print '(i4,2x,a16,a,a,es11.3,a,es11.3)', k + 3, field_names(k), &
             '  ', trim(scale), field_vmin(k), ' .. ', field_vmax(k)
       end do
    end subroutine kipp_list_fields
+
+   ! select the colour field by name, or by its number in kipp_list_fields.
+   ! ok is false only for a number past the end of the list.
+   subroutine kipp_set_cfield(arg, ok)
+      character(len=*), intent(in) :: arg
+      logical, intent(out) :: ok
+      character(len=8), parameter :: FIXED(3) = [character(len=8) :: 'convtype', 'epsnuc', 'neu']
+      integer(int32) :: k
+      k = list_index(arg)
+      ok = k <= 3 + nfields
+      if (.not. ok) return
+      if (k == 0) then
+         st%cfield = arg
+      else if (k <= 3) then
+         st%cfield = FIXED(k)
+      else
+         st%cfield = field_names(k - 3)
+      end if
+   end subroutine kipp_set_cfield
 
 end module kipp
