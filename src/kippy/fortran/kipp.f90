@@ -23,7 +23,7 @@
 module kipp
 
    use, intrinsic :: iso_fortran_env, only: output_unit
-   use iso_c_binding, only: c_int, c_double
+   use iso_c_binding, only: c_int, c_double, c_char, c_null_char
    use typedef, only: int32, real64
    use convdata, only: data, fieldlayer, &
                        FIELD_NBINS, nfields, field_names, &
@@ -53,6 +53,14 @@ module kipp
          integer(c_int), intent(out) :: nsub
          real(c_double) :: r
       end function c_giza_round
+      ! giza's own giza_box binding narrows the tick steps to single precision,
+      ! which shifts ticks off the labels on deep zooms of large values
+      subroutine c_giza_box(xopt, xtick, nxsub, yopt, ytick, nysub) bind(C, name='giza_box')
+         import :: c_char, c_double, c_int
+         character(kind=c_char), dimension(*), intent(in) :: xopt, yopt
+         real(c_double), value :: xtick, ytick
+         integer(c_int), value :: nxsub, nysub
+      end subroutine c_giza_box
    end interface
 
    public :: kipp_load, kipp_choose_device, kipp_render, kipp_save, &
@@ -744,10 +752,10 @@ contains
    subroutine draw_scene()
       character(len=16) :: xopt, yopt
       character(len=64) :: xlabel, ylabel
-      real(real64) :: wx1, wx2, wy1, wy2, vx2, ystep
-      integer(c_int) :: nsub
+      real(real64) :: wx1, wx2, wy1, wy2, vx2, xstep, ystep, xlim
+      integer(c_int) :: nxsub, nysub
       integer(int32) :: layer, fidx
-      logical :: colored
+      logical :: colored, crowded
 
       ! define convection colours (match ConvPlot.conv_hatch)
       call giza_set_colour_representation(2, 0.0d0, 0.6d0, 0.0d0)  ! conv  green
@@ -811,16 +819,21 @@ contains
       ! axes on top
       call giza_set_colour_index(1)
       call giza_set_line_width(1.d0)
-      xopt = 'BCNST'; yopt = 'BCST'
-      if (st%xlog) xopt = 'BCNSTL'
+      xopt = 'BCST'; yopt = 'BCST'
+      if (st%xlog) xopt = 'BCSTL'
       if (st%ylog) yopt = 'BCSTL'
-      ! giza_box's automatic y step, which kippy's viewport keeps at its cap of
-      ! 0.2 of the range (pixel-checked on png and pdf with giza's default
-      ! font), passed explicitly so draw_ylabels' labels land on the ticks
-      ystep = 1.d0; nsub = 1
-      if (.not. st%ylog) ystep = c_giza_round(0.2d0*(wy2 - wy1), nsub)
-      call giza_box(trim(xopt), 0.0, 0, trim(yopt), real(ystep), nsub)
-      call draw_ylabels(wy1, wy2, ystep)
+      ! x labels may reach the page edge, or the colorbar strip when shown
+      xlim = merge(0.86d0, 1.d0, colored)
+      ! giza_box's automatic step is capped at 0.2 of the range (always
+      ! reached on y for kippy's viewport, pixel-checked on png and pdf with
+      ! giza's default font); x widens it until its labels fit.  the steps
+      ! are passed explicitly so tick_labels' labels land on the ticks.
+      ! log axes tick each decade and ignore the step
+      xstep = 1.d0; nxsub = 1; ystep = 1.d0; nysub = 1
+      if (.not. st%ylog) ystep = c_giza_round(0.2d0*(wy2 - wy1), nysub)
+      if (.not. st%xlog) call fit_x_step(wx1, wx2, wy1, wy2, xlim, xstep, nxsub)
+      call c_giza_box(trim(xopt)//c_null_char, xstep, nxsub, trim(yopt)//c_null_char, ystep, nysub)
+      call tick_labels(wx1, wx2, wy1, wy2, xstep, ystep, xlim, .false., crowded)
       call labels(xlabel, ylabel)
       call giza_label(trim(xlabel), trim(ylabel), '')
 
@@ -839,52 +852,109 @@ contains
       call draw_models(wx1, wx2, wy1, wy2, vx2)
    end subroutine draw_scene
 
-   ! y tick labels as giza_box 'N' writes them (same strings and placement),
-   ! except labels whose text, written along the axis, would hang below the
-   ! x axis into the x tick labels
-   subroutine draw_ylabels(wy1, wy2, step)
-      real(real64), intent(in) :: wy1, wy2, step
-      integer(int32), parameter :: MANT(2) = [2, 5]   ! extra labels on short log axes
-      real(real64) :: px1, px2, py1, py2
-      integer(int32) :: i, k, np, nv
+   ! linear x step: giza_box's capped automatic step, widened to the next
+   ! nice step until no x label sits within one character height of the last
+   subroutine fit_x_step(wx1, wx2, wy1, wy2, xlim, step, nsub)
+      real(real64), intent(in) :: wx1, wx2, wy1, wy2, xlim
+      real(real64), intent(out) :: step
+      integer(c_int), intent(out) :: nsub
+      logical :: crowded
+      step = c_giza_round(0.2d0*(wx2 - wx1), nsub)
+      do
+         call tick_labels(wx1, wx2, wy1, wy2, step, 1.d0, xlim, .true., crowded)
+         if (.not. crowded) exit
+         step = c_giza_round(1.001d0*step, nsub)     ! next nice step up
+      end do
+   end subroutine fit_x_step
+
+   ! tick labels as giza_box 'N' writes them (same strings and placement),
+   ! minus any that would clip: an x label within one character height of the
+   ! previous one (crowded), past the page's left edge or past page x xlim,
+   ! and a y label whose text, written along the axis, would run into an x
+   ! label.  dry only tests the x labels for crowding.
+   subroutine tick_labels(wx1, wx2, wy1, wy2, xstep, ystep, xlim, dry, crowded)
+      real(real64), intent(in) :: wx1, wx2, wy1, wy2, xstep, ystep, xlim
+      logical, intent(in) :: dry
+      logical, intent(out) :: crowded
+      integer(int32), parameter :: NBOX = 64
+      real(real64) :: px1, px2, py1, py2, nx1, nx2, ny1, ny2, cw, ch, lo, hi, last
+      real(real64) :: bx(4, NBOX)        ! kept x label boxes, mm: x1 x2 y1 y2
+      integer(int32) :: nb
       character(len=32) :: txt
 
       call giza_get_viewport(giza_units_mm, px1, px2, py1, py2)
-      if (st%ylog) then
-         do i = nint(wy1), nint(wy2)
-            select case (i)
-            case (0); txt = '1'
-            case (1); txt = '10'
-            case default; write (txt, '(a,i0,a)') '10^{', i, '}'
-            end select
-            call ylabel(real(i, real64))
-         end do
-         if (wy2 - wy1 < 2.d0) then
-            do i = nint(wy1) - 1, nint(wy2)
+      call giza_get_viewport(giza_units_normalized, nx1, nx2, ny1, ny2)
+      call giza_get_character_size(giza_units_mm, cw, ch)
+      lo = px1 - nx1*(px2 - px1)/(nx2 - nx1)
+      hi = px1 + (xlim - nx1)*(px2 - px1)/(nx2 - nx1)
+      crowded = .false.; nb = 0; last = -huge(1.d0)
+      call axis(.true., wx1, wx2, xstep, st%xlog)
+      if (.not. dry) call axis(.false., wy1, wy2, ystep, st%ylog)
+   contains
+      ! label candidates in ascending order; log axes label decades, plus 2
+      ! and 5 times each decade when the axis spans under two
+      subroutine axis(isx, w1, w2, step, logax)
+         logical, intent(in) :: isx, logax
+         real(real64), intent(in) :: w1, w2, step
+         integer(int32), parameter :: MANT(2) = [2, 5]
+         integer(int32) :: i, k, np, nv
+         if (logax) then
+            do i = nint(w1) - 1, nint(w2)
+               select case (i)
+               case (0); txt = '1'
+               case (1); txt = '10'
+               case default; write (txt, '(a,i0,a)') '10^{', i, '}'
+               end select
+               call put(isx, (real(i, real64) - w1)/(w2 - w1))
+               if (w2 - w1 >= 2.d0) cycle
                do k = 1, 2
                   call giza_format_number(MANT(k), i, giza_number_format_auto, txt)
-                  call ylabel(i + log10(real(MANT(k), real64)))
+                  call put(isx, (i + log10(real(MANT(k), real64)) - w1)/(w2 - w1))
                end do
             end do
+         else
+            np = floor(log10(step)); nv = nint(step/10.d0**np)
+            do i = nint(w1/step), nint(w2/step)
+               call giza_format_number(i*nv, np, giza_number_format_auto, txt)
+               call put(isx, (i*step - w1)/(w2 - w1))
+            end do
          end if
-      else
-         np = floor(log10(step)); nv = nint(step/10.d0**np)
-         do i = nint(wy1/step), nint(wy2/step)
-            call giza_format_number(i*nv, np, giza_number_format_auto, txt)
-            call ylabel(i*step)
-         end do
-      end if
-   contains
-      subroutine ylabel(v)
-         real(real64), intent(in) :: v
-         real(real64) :: ratio, xlen, ylen
-         ratio = (v - wy1)/(wy2 - wy1)
+      end subroutine axis
+
+      ! giza_box writes x labels 1.2 and y labels 0.7 character heights out
+      ! from the axis, centred on the tick, y labels along the axis
+      subroutine put(isx, ratio)
+         logical, intent(in) :: isx
+         real(real64), intent(in) :: ratio
+         real(real64) :: w, h, c, b(4)
+         integer(int32) :: k
          if (ratio < 0.d0 .or. ratio > 1.d0) return
-         call giza_qtextlen(giza_units_mm, trim(txt), xlen, ylen)
-         if (ratio*(py2 - py1) < 0.5d0*xlen) return
-         call giza_annotate('L', 0.7, real(ratio), 0.5, trim(txt))
-      end subroutine ylabel
-   end subroutine draw_ylabels
+         call giza_qtextlen(giza_units_mm, trim(txt), w, h)
+         if (isx) then
+            c = px1 + ratio*(px2 - px1)
+            b = [c - 0.5d0*w, c + 0.5d0*w, py1 - 1.2d0*ch, py1 - 1.2d0*ch + h]
+            if (b(1) < last + ch) then
+               crowded = .true.
+               return
+            end if
+            if (b(1) < lo .or. b(2) > hi) return
+            last = b(2)
+            if (nb < NBOX) then
+               nb = nb + 1
+               bx(:, nb) = b
+            end if
+            if (.not. dry) call giza_annotate('B', 1.2, real(ratio), 0.5, trim(txt))
+         else
+            c = py1 + ratio*(py2 - py1)
+            b = [px1 - 0.7d0*ch - h, px1 - 0.7d0*ch, c - 0.5d0*w, c + 0.5d0*w]
+            do k = 1, nb
+               if (b(1) < bx(2, k) .and. bx(1, k) < b(2) .and. &
+                   b(3) < bx(4, k) .and. bx(3, k) < b(4)) return
+            end do
+            call giza_annotate('L', 0.7, real(ratio), 0.5, trim(txt))
+         end if
+      end subroutine put
+   end subroutine tick_labels
 
    !---------------------------------------------------------------------
    ! draw_colorbar -- colorbar in the right margin
