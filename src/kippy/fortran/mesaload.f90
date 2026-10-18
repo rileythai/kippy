@@ -59,7 +59,10 @@ module mesaload
    implicit none (type, external)
    private
 
-   public :: loadmesa, load_convection
+   public :: loadmesa, load_convection, cnv_loaded
+
+   ! the last load went through the .cnv reader, whose grid may be reduced
+   logical :: cnv_loaded = .false.
 
    ! cap on the profile-read thread pool. profile parsing is memory-bandwidth
    ! bound: throughput will peak around 3-4 threads as the shared
@@ -93,6 +96,7 @@ contains
       integer(int32) :: slash
       character(len=:), allocatable :: basename
       logical :: is_mesa
+      cnv_loaded = .false.
       slash = index(trim(path), '/', back=.true.)
       basename = path(slash + 1:len_trim(path))
       if ((len_trim(basename) >= 4 .and. basename(1:4) == 'seq.') .or. &
@@ -109,6 +113,7 @@ contains
          call loadmesa(path, ifirst, ilast)
       else
          call loadconv(path, ifirst, ilast)
+         cnv_loaded = .true.
       end if
    end subroutine load_convection
 
