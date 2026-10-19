@@ -149,10 +149,10 @@ contains
                error stop '[loadmon] file changed between passes'
             call build_mon_fields(raw, npts, ltc, lpc, rhop, f, wd)
             recs(m)%nfld = MON_NFIELDS
-            allocate (recs(m)%fld(MON_NFIELDS))
+            allocate (recs(m)%fld(2, MON_NFIELDS))
             do fld = 1, MON_NFIELDS
                call build_field_layer(raw%v(:, fld), npts, fld, &
-                                      recs(m)%fld(fld))
+                                      recs(m)%fld(:, fld))
             end do
          end block
       end do

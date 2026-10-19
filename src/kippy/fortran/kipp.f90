@@ -27,7 +27,7 @@ module kipp
    use typedef, only: int32, real64
    use convdata, only: data, fieldlayer, &
                        FIELD_NBINS, nfields, field_names, &
-                       field_vmin, field_vmax, field_log
+                       field_vmin, field_vmax, field_vpos, field_log
    use mesaload, only: load_convection, cnv_loaded
    use cmaps, only: cmap_rgb, CMAP_NAMES, NCMAPS
    use giza
@@ -91,6 +91,7 @@ module kipp
       real(real64)      :: xmin = 0, xmax = 0, ymin = 0, ymax = 0
       logical           :: xauto = .true., yauto = .true.
       character(len=32) :: cfield = 'epsnuc'   ! convtype | epsnuc | neu | any field name
+      logical           :: cflip = .false.     ! column field in its non-default lin/log scale
       character(len=16) :: cmap = 'teal'       ! colour-field colormap: a CMAP_NAMES entry, '_r' reverses
       character(len=64) :: device = '/xw'      ! ?
       character(len=64) :: prefix = 'convview'
@@ -178,7 +179,7 @@ module kipp
 
    ! per-field band cache: one nested bandset per contour bin (bin 1 covers
    ! the whole star, higher bins nest inward), filled on first use of a
-   ! `color <field>` selection
+   ! `color <field>` selection, per field and scale
    type :: fcache_t
       logical :: valid = .false.
       integer(int32) :: nlev = 0
@@ -191,7 +192,7 @@ module kipp
    type(chainset_t):: conv_chains(5)   ! exact region outlines per conv type
    logical         :: conv_valid = .false.
    type(ecache_t)  :: ecache(0:2)
-   type(fcache_t), allocatable :: fcache(:)   ! one per registered colour field
+   type(fcache_t), allocatable :: fcache(:, :)   ! (scale, colour field), as fld
 
    real(real64), allocatable :: epx(:), epy(:)   ! polygon emit scratch
 
@@ -1352,7 +1353,7 @@ contains
       ! field band caches are view-dependent (mass/radius interfaces), so
       ! drop and re-size them to the current registry on every invalidation
       if (allocated(fcache)) deallocate (fcache)
-      if (nfields > 0) allocate (fcache(nfields))
+      if (nfields > 0) allocate (fcache(2, nfields))
    end subroutine cache_invalidate
 
    subroutine draw_bandset(bs)
@@ -1826,8 +1827,13 @@ contains
       integer(int32) :: n
       n = 0
       if (f < 1 .or. f > data(i)%nfld) return
-      n = data(i)%fld(f)%n
+      n = data(i)%fld(fscale(), f)%n
    end function field_layer_len
+
+   ! fld/fcache scale index of the selected colour field: 1 default, 2 flipped
+   pure integer(int32) function fscale()
+      fscale = merge(2_int32, 1_int32, st%cflip)
+   end function fscale
 
    ! copy a model's field-f (level, coord-index) step function into buffers,
    ! parallel to get_layer_buf for the energy layers
@@ -1837,8 +1843,8 @@ contains
       integer(int32), intent(out) :: n
       n = field_layer_len(i, f)
       if (n > 0) then
-         vals(1:n) = int(data(i)%fld(f)%lev, int32)
-         idxs(1:n) = int(data(i)%fld(f)%idx, int32)
+         vals(1:n) = int(data(i)%fld(fscale(), f)%lev, int32)
+         idxs(1:n) = int(data(i)%fld(fscale(), f)%idx, int32)
       end if
    end subroutine get_field_buf
 
@@ -1850,7 +1856,7 @@ contains
       integer(int32) :: i, n, lev, maxn, m
       integer(int32), allocatable :: lvals(:), lidxs(:)
       real(real64), allocatable   :: ivlo(:), ivhi(:)
-      associate (fc => fcache(f))
+      associate (fc => fcache(fscale(), f))
          if (allocated(fc%band)) deallocate (fc%band)
          fc%nlev = FIELD_NBINS
          allocate (fc%band(fc%nlev))
@@ -1882,11 +1888,11 @@ contains
       integer(int32) :: lev
       real(real64) :: t, r, g, b
       if (f < 1 .or. f > nfields) return
-      if (.not. fcache(f)%valid) call build_field_cache(f)
+      if (.not. fcache(fscale(), f)%valid) call build_field_cache(f)
 
       call giza_set_fill(1)
       call giza_set_line_width(1.d0)
-      associate (fc => fcache(f))
+      associate (fc => fcache(fscale(), f))
          do lev = 1, fc%nlev
             t = (real(lev, real64) - 0.5d0)/real(fc%nlev, real64)
             call colormap(t, r, g, b)
@@ -1926,8 +1932,8 @@ contains
          title(index(title, '_'):index(title, '_')) = ' '
       end do
       vlo = field_vmin(f); vhi = field_vmax(f)
-      if (field_log(f)) then
-         vlo = log10(max(vlo, LOGMIN)); vhi = log10(max(vhi, LOGMIN))
+      if (field_log(f) .neqv. st%cflip) then
+         vlo = log10(field_vpos(f)); vhi = log10(vhi)
          title = 'log '//trim(title)
       else
          ! move a power of ten into the title so tick labels stay short
@@ -2334,7 +2340,7 @@ contains
          print '(a)', '  (no extra column fields in this source)'
          return
       end if
-      print '(a)', '  column fields (min .. max across the run):'
+      print '(a)', '  column fields (min .. max across the run, color -<number> for the other scale):'
       do k = 1, nfields
          scale = merge('log ', 'lin ', field_log(k))
          print '(i4,2x,a16,a,a,es11.3,a,es11.3)', k + 3, field_names(k), &
@@ -2342,16 +2348,38 @@ contains
       end do
    end subroutine kipp_list_fields
 
-   ! select the colour field by name, or by its number in kipp_list_fields.
-   ! ok is false only for a number past the end of the list.
+   ! select the colour field by name, or by its number in kipp_list_fields; a
+   ! negative number shows that column field in its other (lin/log) scale.
+   ! ok is false, with the reason printed, when the selection is refused.
    subroutine kipp_set_cfield(arg, ok)
       character(len=*), intent(in) :: arg
       logical, intent(out) :: ok
       character(len=8), parameter :: FIXED(3) = [character(len=8) :: 'convtype', 'epsnuc', 'neu']
       integer(int32) :: k
+      logical :: flip
+      flip = .false.
       k = list_index(arg)
-      ok = k <= 3 + nfields
-      if (.not. ok) return
+      if (k == 0 .and. arg(1:1) == '-') then
+         k = list_index(arg(2:))
+         flip = k > 0
+      end if
+      ok = .false.
+      if (k > 3 + nfields) then
+         print *, 'no color entry ', arg, '   (type color for the list)'
+         return
+      end if
+      if (flip) then
+         if (k <= 3) then
+            print *, 'no lin/log switch for the fixed selectors 1-3'
+            return
+         end if
+         if (.not. field_log(k - 3) .and. field_vpos(k - 3) > field_vmax(k - 3)) then
+            print *, 'no log scale for ', trim(field_names(k - 3)), ': no positive values'
+            return
+         end if
+      end if
+      ok = .true.
+      st%cflip = flip
       if (k == 0) then
          st%cfield = arg
       else if (k <= 3) then

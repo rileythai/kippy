@@ -56,9 +56,10 @@ module convdata
           minloss, mingain, minnucl, minnucg, minneul, minneug, &
           minlossd,mingaind,minnucld,minnucgd,minneuld,minneugd
 
-     ! generic per-column colour fields (empty for the kepler .cnv reader)
+     ! generic per-column colour fields (empty for the kepler .cnv reader);
+     ! fld(1, f) is binned in field f's default scale, fld(2, f) in the other
      integer(kind=int32) :: nfld = 0
-     type(fieldlayer), dimension(:), allocatable :: fld
+     type(fieldlayer), dimension(:, :), allocatable :: fld
 
      REAL(kind=real64), dimension(nangjd) :: &
          aw, angltv
@@ -105,11 +106,12 @@ module convdata
   ! readers populate it once from the source header/body columns; the
   ! renderer resolves a `color <name>` against field_names and reads the
   ! matching fld() layer.  vmin/vmax bound the colorbar (min/max across the
-  ! whole model sequence), field_log selects log vs linear binning.
+  ! whole model sequence), field_log is the default binning (log vs linear),
+  ! and vpos, the smallest positive value, is the floor of a log scale.
   integer(kind=int32), parameter :: FIELD_NBINS = 24
   integer(kind=int32) :: nfields = 0
   character(len=32), dimension(:), allocatable :: field_names
-  real(kind=real64), dimension(:), allocatable :: field_vmin, field_vmax
+  real(kind=real64), dimension(:), allocatable :: field_vmin, field_vmax, field_vpos
   logical, dimension(:), allocatable :: field_log
 
   ! TODO - allow multiple convection files?

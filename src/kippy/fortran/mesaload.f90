@@ -191,10 +191,10 @@ contains
       end do
       do i = 1, nkeep
          data(i)%nfld = nf
-         if (nf > 0) allocate (data(i)%fld(nf))
+         if (nf > 0) allocate (data(i)%fld(2, nf))
          do f = 1, nf
             call build_field_layer(rf(i)%v(:, f), size(rf(i)%v, 1), f, &
-                                   data(i)%fld(f))
+                                   data(i)%fld(:, f))
          end do
       end do
       deallocate (rf, fld_col)
@@ -460,13 +460,13 @@ contains
          error stop '[flush_kipp_fields] record/model mismatch between passes'
 
       recs(counter)%nfld = nf
-      allocate (recs(counter)%fld(nf))
+      allocate (recs(counter)%fld(2, nf))
       allocate (raw(nz))
       do f = 1, nf
          do k = 1, nz
             raw(k) = fb(f, nz - k + 1)
          end do
-         call build_field_layer(raw, nz, f, recs(counter)%fld(f))
+         call build_field_layer(raw, nz, f, recs(counter)%fld(:, f))
       end do
       deallocate (raw)
    end subroutine flush_kipp_fields

@@ -29,7 +29,7 @@ module convbuild
    use convdata, only: &
       convtype, fieldlayer, &
       nuc_kind, idx_kind, &
-      FIELD_NBINS, nfields, field_names, field_vmin, field_vmax, field_log
+      FIELD_NBINS, nfields, field_names, field_vmin, field_vmax, field_vpos, field_log
 
    implicit none (type, external)
    private
@@ -42,7 +42,6 @@ module convbuild
    real(real64), parameter :: SOLMASS = 1.9892d33
    real(real64), parameter :: SOLRAD = 6.9599d10
    real(real64), parameter :: YR = 31556952.d0
-   real(real64), parameter :: LOGTINY = 1.d-99
    real(real64), parameter :: GROW_FAC = 0.5d0*(sqrt(5.d0) + 1.d0)
    integer(int32), parameter :: EPS_BASE = 1
    integer(int32), parameter :: REC_NVERS = 10600
@@ -143,13 +142,16 @@ contains
       if (allocated(field_names)) deallocate (field_names)
       if (allocated(field_vmin)) deallocate (field_vmin)
       if (allocated(field_vmax)) deallocate (field_vmax)
+      if (allocated(field_vpos)) deallocate (field_vpos)
       if (allocated(field_log)) deallocate (field_log)
       nfields = nf
-      allocate (field_names(nf), field_vmin(nf), field_vmax(nf), field_log(nf))
+      allocate (field_names(nf), field_vmin(nf), field_vmax(nf), field_vpos(nf), &
+                field_log(nf))
       if (nf > 0) then
          field_names = ''
          field_vmin = huge(1.d0)
          field_vmax = -huge(1.d0)
+         field_vpos = huge(1.d0)
          field_log = .false.
       end if
    end subroutine reset_field_registry
@@ -163,6 +165,7 @@ contains
       if (abs(v) > huge(1.d0)) return     ! skip +/-Inf
       if (v < field_vmin(f)) field_vmin(f) = v
       if (v > field_vmax(f)) field_vmax(f) = v
+      if (v > 0.d0 .and. v < field_vpos(f)) field_vpos(f) = v
    end subroutine update_field_range
 
    ! choose log binning for a field whose range is strictly positive and spans
@@ -180,60 +183,65 @@ contains
       field_log(f) = wide
    end subroutine finalize_field_log
 
-   ! contour bin (1..FIELD_NBINS) of a value under field f's range and scale
-   pure function field_level(v, f) result(lev)
+   ! contour bin (1..FIELD_NBINS) of a value under field f's range, in log10
+   ! when logscale.  a log scale starts at the smallest positive value in the
+   ! run, so values <= 0 fall in bin 1.
+   pure function field_level(v, f, logscale) result(lev)
       real(real64), intent(in) :: v
       integer(int32), intent(in) :: f
+      logical, intent(in) :: logscale
       integer(int32) :: lev
       real(real64) :: a, b, x, t
 
-      a = field_vmin(f)
-      b = field_vmax(f)
-      if (field_log(f)) then
-         a = log10(max(a, LOGTINY))
-         b = log10(max(b, LOGTINY))
-         x = log10(max(v, LOGTINY))
+      lev = 1
+      if (logscale) then
+         if (field_vpos(f) > field_vmax(f)) return   ! no positive values
+         a = log10(field_vpos(f))
+         b = log10(field_vmax(f))
+         x = log10(max(v, field_vpos(f)))
       else
+         a = field_vmin(f)
+         b = field_vmax(f)
          x = v
       end if
-      if (b <= a) then
-         lev = 1
-         return
-      end if
+      if (b <= a) return
       t = (x - a)/(b - a)
       lev = 1 + int(t*real(FIELD_NBINS, real64))
       if (lev < 1) lev = 1
       if (lev > FIELD_NBINS) lev = FIELD_NBINS
    end function field_level
 
-   ! run-length compress a per-cell field (center -> surface) into a
-   ! (level, coordinate-index) step function, the same shape build_energy
-   ! produces.  every cell maps to a valid bin, so the star tiles fully.
+   ! run-length compress a per-cell field (center -> surface) into
+   ! (level, coordinate-index) step functions, the same shape build_energy
+   ! produces: out(1) binned in the field's default scale, out(2) in the
+   ! other one.  every cell maps to a valid bin, so the star tiles fully.
    subroutine build_field_layer(raw, nz, f, out)
       real(real64), intent(in) :: raw(:)
       integer(int32), intent(in) :: nz, f
-      type(fieldlayer), intent(out) :: out
-      integer(int32) :: k, lev, prev, n
+      type(fieldlayer), intent(out) :: out(2)
+      integer(int32) :: j, k, lev, prev, n
       integer(int32), allocatable :: lv(:), ix(:)
 
       allocate (lv(nz), ix(nz))
-      n = 0
-      prev = -huge(1_int32)
-      do k = 1, nz
-         lev = field_level(raw(k), f)
-         if (lev /= prev) then
-            n = n + 1
-            lv(n) = lev
-            ix(n) = k
-            prev = lev
+      do k = 1, 2
+         n = 0
+         prev = -huge(1_int32)
+         do j = 1, nz
+            lev = field_level(raw(j), f, field_log(f) .neqv. (k == 2))
+            if (lev /= prev) then
+               n = n + 1
+               lv(n) = lev
+               ix(n) = j
+               prev = lev
+            end if
+         end do
+         out(k)%n = n
+         allocate (out(k)%lev(n), out(k)%idx(n))
+         if (n > 0) then
+            out(k)%lev = int(lv(1:n), nuc_kind)
+            out(k)%idx = int(ix(1:n), idx_kind)
          end if
       end do
-      out%n = n
-      allocate (out%lev(n), out%idx(n))
-      if (n > 0) then
-         out%lev = int(lv(1:n), nuc_kind)
-         out%idx = int(ix(1:n), idx_kind)
-      end if
       deallocate (lv, ix)
    end subroutine build_field_layer
 

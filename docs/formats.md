@@ -94,5 +94,9 @@ the selectors and ranges available for the loaded input.
 
 Field values are always quantized into 24 contour bins over the minimum and maximum
 across the loaded run. Scaling switches automatically from linear to logarithmic
-when the complete range is positive and spans more than two decades. These
+when the complete range is positive and spans more than two decades.
+`color -<number>` shows a column in the other scale. A logarithmic scale
+starts at the smallest positive value in the run, and values at or below zero
+fall in the lowest bin. A column with no positive values has no logarithmic
+scale. Both scales are binned at load, so switching is immediate. These
 generic fields are separate from the built-in `epsnuc` energy overlay.
