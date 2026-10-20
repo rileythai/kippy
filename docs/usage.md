@@ -77,7 +77,7 @@ model. Arguably, I might be using too little time resolution here!
 
 `kippy` also provides a general REPL interface to switch the color field, and axis scalings. This can be entered by pressing `q`, `Esc` or `Ctrl-C` in the plot window to leave [Cursor mode](#cursor-mode).
 
-Clicking anywhere on the open plot window or entering `i` will return you to [Cursor mode](#cusor-mode).
+Clicking anywhere on the open plot window or entering `i` will return you to [Cursor mode](#cursor-mode).
 
 <video src="repl_demo.webm" controls muted playsinline title="Switching between the kipp> prompt and cursor mode"></video>
 
