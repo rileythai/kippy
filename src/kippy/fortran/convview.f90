@@ -122,7 +122,7 @@ program convview
          if (ok) then
             call kipp_render()
          else
-            print *, 'units: solar|cgs|s|min|hr|d|yr|kyr|Myr|Gyr|g|kg|Msun|cm|m|km|Rsun'
+            print *, 'units: auto|solar|cgs|s|min|hr|d|yr|kyr|Myr|Gyr|g|kg|Msun|cm|m|km|Rsun'
          end if
       case ('offset')
          st%xoffset = (trim(a1) == 'on')
@@ -233,8 +233,8 @@ contains
       print '(a)', '  xlim <min> <max>      ylim <min> <max>'
       print '(a)', '  xscale lin|log        yscale lin|log'
       print '(a)', '  xaxis time|model      yaxis mass|radius'
-      print '(a)', '  units <unit>          axis unit: s min hr d yr kyr Myr Gyr | g kg Msun | cm m km Rsun | solar | cgs'
-      print '(a)', '  offset on|off         matplotlib-style time offset (+3.81233 Gyr)'
+      print '(a)', '  units <unit>          axis unit: auto | s min hr d yr kyr Myr Gyr | g kg Msun | cm m km Rsun | solar | cgs'
+      print '(a)', '  offset on|off         matplotlib-style time offset (+3.81233 Gyr), on by default'
       print '(a)', '  color <name|number>   colour field (color alone lists them)'
       print '(a)', '  cmap <name|number>    colour-field colormap, _r reverses (cmap alone lists them)'
       print '(a)', '  models on|off         grid on|off   (cell and time boundaries)'

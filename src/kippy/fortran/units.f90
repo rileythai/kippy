@@ -82,7 +82,7 @@ module units
       end function c_fmod
    end interface
 
-   public :: unit_id, quantity_label, axis_offset
+   public :: unit_id, quantity_label, axis_offset, auto_time_unit
 
 contains
 
@@ -106,6 +106,17 @@ contains
       end do
       k = 0
    end function unit_id
+
+   ! largest time unit (s .. Gyr, UNAME(1:IGYR)) in which a span of
+   ! span_sec seconds is at least 1, else s
+   pure function auto_time_unit(span_sec) result(k)
+      real(real64), intent(in) :: span_sec
+      integer(int32) :: k
+      do k = IGYR, 2, -1
+         if (span_sec >= UFAC(k)) return
+      end do
+      k = 1
+   end function auto_time_unit
 
    ! colorbar title parts for a column: the name without its unit suffix
    ! ('_' shown as a space, giza has no escape for it; a Greek-letter name as

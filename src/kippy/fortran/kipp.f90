@@ -29,8 +29,8 @@ module kipp
                        FIELD_NBINS, nfields, field_names, field_units, &
                        field_vmin, field_vmax, field_log
    use mesaload, only: load_convection, cnv_loaded, kipp_axis_units
-   use units, only: unit_id, quantity_label, axis_offset, UNAME, UDIM, UFAC, &
-                    ULABEL, DIM_TIME, DIM_MASS, DIM_LENGTH
+   use units, only: unit_id, quantity_label, axis_offset, auto_time_unit, UNAME, &
+                    UDIM, UFAC, ULABEL, DIM_TIME, DIM_MASS, DIM_LENGTH
    use cmaps, only: cmap_rgb, CMAP_NAMES, NCMAPS
    use giza
 
@@ -86,7 +86,8 @@ module kipp
       character(len=4)  :: tunit = 'yr'        ! display units, UNAME entries
       character(len=4)  :: munit = 'Msun'
       character(len=4)  :: runit = 'Rsun'
-      logical           :: xoffset = .false.   ! matplotlib-style time offset
+      logical           :: tauto = .true.      ! tunit follows the view span
+      logical           :: xoffset = .true.    ! matplotlib-style time offset
       logical           :: xlog = .false.
       logical           :: ylog = .false.
       real(real64)      :: xmin = 0, xmax = 0, ymin = 0, ymax = 0
@@ -220,7 +221,6 @@ contains
       call load_convection(filename, 1_int32, huge(1_int32))
       nmodels = int(size(data), int32)
       if (nmodels < 2) error stop '[kipp] need at least 2 models'
-      if (len_trim(kipp_axis_units(DIM_TIME)) > 0) st%tunit = kipp_axis_units(DIM_TIME)
       if (len_trim(kipp_axis_units(DIM_MASS)) > 0) st%munit = kipp_axis_units(DIM_MASS)
       if (len_trim(kipp_axis_units(DIM_LENGTH)) > 0) st%runit = kipp_axis_units(DIM_LENGTH)
       call cache_invalidate()
@@ -774,6 +774,9 @@ contains
       call giza_set_colour_representation(6, 0.85d0, 0.85d0, 0.0d0)! thal  yellow
 
       call clamp_view()
+      ! log ticks are powers of ten in any unit, so a log axis keeps its unit
+      if (st%tauto .and. st%xaxis == 'time' .and. .not. st%xlog) &
+         call set_time_unit(auto_time_unit((st%xmax - st%xmin)*UFAC(unit_id(st%tunit))))
       call set_visible_range()
       xoff = 0.d0; xofftxt = ''
       if (st%xoffset .and. st%xaxis == 'time' .and. .not. st%xlog) &
@@ -2333,14 +2336,19 @@ contains
    end subroutine kipp_rebuild
 
    ! display unit for the axis of the unit's dimension ('solar' and 'cgs' set
-   ! mass and radius together), keeping the current view.  bands index the
-   ! x strips and hold cgs y, so nothing is retraced.  ok is false if unknown.
+   ! mass and radius together), keeping the current view.  a time unit pins
+   ! the time axis; 'auto' lets it follow the view span again.  bands index
+   ! the x strips and hold cgs y, so nothing is retraced.  ok is false if
+   ! unknown.
    subroutine kipp_set_unit(arg, ok)
       character(len=*), intent(in) :: arg
       logical, intent(out) :: ok
       integer(int32) :: k
       ok = .true.
       select case (arg)
+      case ('auto')
+         st%tauto = .true.
+         return
       case ('solar')
          call set_y_units('Msun', 'Rsun')
          return
@@ -2353,18 +2361,26 @@ contains
       if (.not. ok) return
       select case (UDIM(k))
       case (DIM_TIME)
-         if (st%xaxis == 'time') then
-            st%xmin = st%xmin*UFAC(unit_id(st%tunit))/UFAC(k)
-            st%xmax = st%xmax*UFAC(unit_id(st%tunit))/UFAC(k)
-         end if
-         st%tunit = UNAME(k)
-         call build_axes()
+         st%tauto = .false.
+         call set_time_unit(k)
       case (DIM_MASS)
          call set_y_units(UNAME(k), st%runit)
       case (DIM_LENGTH)
          call set_y_units(st%munit, UNAME(k))
       end select
    end subroutine kipp_set_unit
+
+   ! switch the time unit to UNAME(k), keeping the view
+   subroutine set_time_unit(k)
+      integer(int32), intent(in) :: k
+      if (UNAME(k) == st%tunit) return
+      if (st%xaxis == 'time') then
+         st%xmin = st%xmin*UFAC(unit_id(st%tunit))/UFAC(k)
+         st%xmax = st%xmax*UFAC(unit_id(st%tunit))/UFAC(k)
+      end if
+      st%tunit = UNAME(k)
+      call build_axes()
+   end subroutine set_time_unit
 
    subroutine set_y_units(munit, runit)
       character(len=*), intent(in) :: munit, runit
