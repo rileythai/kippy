@@ -21,15 +21,17 @@ module convbuild
    ! reader-agnostic record builders shared by the mesa/.kipp reader
    ! (mesaload) and the monash seq reader (monload): energy/field
    ! quantization, the colour-field registry, zone run-length compression,
-   ! and the shared physical constants.  depends only on convdata + typedef
-   ! so either reader can use it without a module cycle.
+   ! and the shared physical constants (from units).  depends only on
+   ! convdata, typedef and units so either reader can use it without a
+   ! module cycle.
 
    use typedef, only: &
       int32, real64
    use convdata, only: &
       convtype, fieldlayer, &
       nuc_kind, idx_kind, &
-      FIELD_NBINS, nfields, field_names, field_vmin, field_vmax, field_log
+      FIELD_NBINS, nfields, field_names, field_units, field_vmin, field_vmax, field_log
+   use units, only: SOLMASS, SOLRAD, YR
 
    implicit none (type, external)
    private
@@ -39,9 +41,6 @@ module convbuild
    public :: reset_field_registry, update_field_range, finalize_field_log
    public :: alloc_empty_layers
 
-   real(real64), parameter :: SOLMASS = 1.9892d33
-   real(real64), parameter :: SOLRAD = 6.9599d10
-   real(real64), parameter :: YR = 31556952.d0
    real(real64), parameter :: LOGTINY = 1.d-99
    real(real64), parameter :: GROW_FAC = 0.5d0*(sqrt(5.d0) + 1.d0)
    integer(int32), parameter :: EPS_BASE = 1
@@ -144,10 +143,13 @@ contains
       if (allocated(field_vmin)) deallocate (field_vmin)
       if (allocated(field_vmax)) deallocate (field_vmax)
       if (allocated(field_log)) deallocate (field_log)
+      if (allocated(field_units)) deallocate (field_units)
       nfields = nf
       allocate (field_names(nf), field_vmin(nf), field_vmax(nf), field_log(nf))
+      allocate (field_units(nf))
       if (nf > 0) then
          field_names = ''
+         field_units = ''
          field_vmin = huge(1.d0)
          field_vmax = -huge(1.d0)
          field_log = .false.
