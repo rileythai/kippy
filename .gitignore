@@ -19,6 +19,7 @@ _build/
 
 # viewer outputs
 *.png
+!docs/*.png
 convview
 convdump
 seq.*

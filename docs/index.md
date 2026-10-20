@@ -1,6 +1,6 @@
 # `kippy`
 
-![Demonstration of Kippy on a Solar metallicity AGB model from KEPLER](kippy_demo.gif)
+<video src="kippy_demo_v2.webm" autoplay loop muted playsinline title="Demonstration of kippy on an AGB model from MESA"></video>
 
 `kippy` is an interactive Kippenhahn diagram diagnostic tool for various stellar evolution codes, including
 [MESA](https://mesastar.org) profiles or [customized raw binary (`.kipp`) streams](kippfiles.md), [KEPLER](https://2sn.erc.monash.edu/kepler/doc) `.cnv` files, and MONASH `.seq` files.
@@ -8,6 +8,11 @@
 `kippy` is built in Fortran for high performance, out-of-memory access for even the longest stellar evolution runs, and supports `pip`-installation. The plotting makes use of the [`cairo`](https://www.cairographics.org/) graphics library via [`giza`](https://danieljprice.github.io/giza).
 
 `kippy` is based on the interactive Kippenhahn diagram viewer originally written by [Alexander Heger](https://2sn.erc.monash.edu/) for `KEPLER`, and is maintained by [Riley Thai](https://rileythai.com).
+
+
+![Density field with the inferno colormap](custom_field_demo.png)
+![Log radius axis zoomed into the core](radius_demo.png)
+![Resolution grid during hot third dredge-up in a 6 solar-mass MESA AGB model](grid_demo.png)
 
 
 ## Quick start

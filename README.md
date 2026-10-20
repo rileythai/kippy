@@ -6,7 +6,7 @@
 [![Wheels](https://github.com/rileythai/kippy/actions/workflows/wheels.yml/badge.svg)](https://github.com/rileythai/kippy/actions/workflows/wheels.yml)
 [![Docs](https://github.com/rileythai/kippy/actions/workflows/docs.yml/badge.svg)](https://kippy.rileythai.com)
 
-![Demonstration of kippy on a solar metallicity AGB model from KEPLER](https://raw.githubusercontent.com/rileythai/kippy/main/docs/kippy_demo.gif)
+![Demonstration of kippy on an AGB model from MESA](https://raw.githubusercontent.com/rileythai/kippy/main/docs/kippy_demo.gif)
 
 `kippy` is an interactive Kippenhahn diagram diagnostic tool for various stellar
 evolution codes, including [MESA](https://mesastar.org) profiles or
