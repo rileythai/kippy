@@ -59,6 +59,8 @@ or rectangle selection, `q`, `Esc` or `Ctrl-C` cancels that selection.
 
 ## REPL commands
 
+<video src="repl_demo.webm" controls muted playsinline title="Switching between the kipp> prompt and cursor mode"></video>
+
 Commands and arguments are whitespace-separated and case-sensitive.
 
 | Command | Aliases | Arguments | Effect |

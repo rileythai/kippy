@@ -1,6 +1,6 @@
 # `kippy`
 
-![Demonstration of Kippy on a Solar metallicity AGB model from KEPLER](kippy_demo.gif)
+<video src="kippy_demo_v2.webm" autoplay loop muted playsinline title="Demonstration of kippy on a solar metallicity AGB model from KEPLER"></video>
 
 `kippy` is an interactive Kippenhahn diagram diagnostic tool for various stellar evolution codes, including
 [MESA](https://mesastar.org) profiles or [customized raw binary (`.kipp`) streams](kippfiles.md), [KEPLER](https://2sn.erc.monash.edu/kepler/doc) `.cnv` files, and MONASH `.seq` files.
