@@ -1,5 +1,5 @@
-CLAUDE.md export-ignore
-PLAN.md export-ignore
+AGENTS.md export-ignore
+.agents export-ignore
 .claude export-ignore
 docs/kippy_demo.gif export-ignore
 docs/*.webm export-ignore
