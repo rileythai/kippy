@@ -129,7 +129,7 @@ colormaps (cmap <name|number>, append _r to reverse):
   17  turbo
 ```
 
-For example, this is `color rho_gcc` with `cmap inferno` centered on a flash-driven convective region of the 5th thermal pulse of a 6 solar-mass AGB star.
+For example, this is `color rho_gcc` with `cmap inferno` centered on a flash-driven convective region of the 4th thermal pulse of a 6.5 solar-mass AGB star.
 
 ![Density field with the inferno colormap](custom_field_demo.png)
 
