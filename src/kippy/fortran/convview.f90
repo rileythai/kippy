@@ -118,9 +118,15 @@ program convview
             print *, 'yaxis: mass|radius'
          end if
       case ('units')
-         st%ysolar = (trim(a1) == 'solar' .or. trim(a1) == 'msun' .or. &
-                      trim(a1) == 'rsun')
-         st%yauto = .true.; call kipp_autoscale(); call kipp_render()
+         call kipp_set_unit(trim(a1), ok)
+         if (ok) then
+            call kipp_render()
+         else
+            print *, 'units: solar|cgs|s|min|hr|d|yr|kyr|Myr|Gyr|g|kg|Msun|cm|m|km|Rsun'
+         end if
+      case ('offset')
+         st%xoffset = (trim(a1) == 'on')
+         call kipp_render()
       case ('color', 'colour')
          if (len_trim(a1) == 0) then
             call kipp_list_fields()
@@ -226,7 +232,9 @@ contains
       print '(a)', 'commands:'
       print '(a)', '  xlim <min> <max>      ylim <min> <max>'
       print '(a)', '  xscale lin|log        yscale lin|log'
-      print '(a)', '  xaxis time|model      yaxis mass|radius      units solar|cgs'
+      print '(a)', '  xaxis time|model      yaxis mass|radius'
+      print '(a)', '  units <unit>          axis unit: s min hr d yr kyr Myr Gyr | g kg Msun | cm m km Rsun | solar | cgs'
+      print '(a)', '  offset on|off         matplotlib-style time offset (+3.81233 Gyr)'
       print '(a)', '  color <name|number>   colour field (color alone lists them)'
       print '(a)', '  cmap <name|number>    colour-field colormap, _r reverses (cmap alone lists them)'
       print '(a)', '  models on|off         grid on|off   (cell and time boundaries)'

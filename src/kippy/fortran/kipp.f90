@@ -26,9 +26,11 @@ module kipp
    use iso_c_binding, only: c_int, c_double, c_char, c_null_char
    use typedef, only: int32, real64
    use convdata, only: data, fieldlayer, &
-                       FIELD_NBINS, nfields, field_names, &
+                       FIELD_NBINS, nfields, field_names, field_units, &
                        field_vmin, field_vmax, field_log
-   use mesaload, only: load_convection, cnv_loaded
+   use mesaload, only: load_convection, cnv_loaded, kipp_axis_units
+   use units, only: unit_id, quantity_label, axis_offset, UNAME, UDIM, UFAC, &
+                    ULABEL, DIM_TIME, DIM_MASS, DIM_LENGTH
    use cmaps, only: cmap_rgb, CMAP_NAMES, NCMAPS
    use giza
 
@@ -66,12 +68,8 @@ module kipp
    public :: kipp_load, kipp_choose_device, kipp_render, kipp_save, &
              kipp_close, kipp_autoscale, kipp_rebuild, kipp_interact, kipp_wait_input, &
              kipp_action, kipp_window_center, kipp_list_fields, kipp_set_cfield, &
-             kipp_list_cmaps, kipp_set_cmap, st, nmodels
+             kipp_list_cmaps, kipp_set_cmap, kipp_set_unit, st, nmodels
 
-   ! physical constants
-   real(real64), parameter :: SOLMASS = 1.9892d33      ! g
-   real(real64), parameter :: SOLRAD = 6.9599d10      ! cm
-   real(real64), parameter :: YR = 31556952.d0    ! s (Gregorian year)
    real(real64), parameter :: LOGMIN = 1.d-99
    ! colorbar tick-label height (x chs) and title offset (tick-label heights)
    real(real64), parameter :: CB_TICK = 0.8d0, CB_TITLE = 3.5d0
@@ -85,7 +83,10 @@ module kipp
    type, public :: kstate_t
       character(len=8)  :: xaxis = 'time'      ! 'time' | 'model'
       character(len=8)  :: yaxis = 'mass'      ! 'mass' | 'radius'
-      logical           :: ysolar = .true.     ! Msun/Rsun vs g/cm
+      character(len=4)  :: tunit = 'yr'        ! display units, UNAME entries
+      character(len=4)  :: munit = 'Msun'
+      character(len=4)  :: runit = 'Rsun'
+      logical           :: xoffset = .false.   ! matplotlib-style time offset
       logical           :: xlog = .false.
       logical           :: ylog = .false.
       real(real64)      :: xmin = 0, xmax = 0, ymin = 0, ymax = 0
@@ -126,6 +127,11 @@ module kipp
    real(real64), allocatable :: xval(:)    ! x coordinate per model (yr or ncyc)
    real(real64), allocatable :: xedge(:)   ! model strip edges (nmodels+1)
    real(real64), allocatable :: ystar(:)   ! outer mass/radius per model (cgs)
+
+   ! time offset subtracted from linear x world coordinates, in st%tunit,
+   ! and its label; set per render by draw_scene
+   real(real64) :: xoff = 0.d0
+   character(len=64) :: xofftxt = ''
 
    ! i think this is really sick so read below
 
@@ -214,6 +220,9 @@ contains
       call load_convection(filename, 1_int32, huge(1_int32))
       nmodels = int(size(data), int32)
       if (nmodels < 2) error stop '[kipp] need at least 2 models'
+      if (len_trim(kipp_axis_units(DIM_TIME)) > 0) st%tunit = kipp_axis_units(DIM_TIME)
+      if (len_trim(kipp_axis_units(DIM_MASS)) > 0) st%munit = kipp_axis_units(DIM_MASS)
+      if (len_trim(kipp_axis_units(DIM_LENGTH)) > 0) st%runit = kipp_axis_units(DIM_LENGTH)
       call cache_invalidate()
       call build_axes()
       call kipp_autoscale()
@@ -233,7 +242,7 @@ contains
          if (st%xaxis == 'model') then
             xval(i) = real(data(i)%ncyc, real64)
          else
-            xval(i) = data(i)%timesec/YR
+            xval(i) = data(i)%timesec/UFAC(unit_id(st%tunit))
          end if
          if (st%yaxis == 'radius') then
             ystar(i) = data(i)%rncoord(data(i)%ncoord)
@@ -267,9 +276,9 @@ contains
    pure function yscale() result(s)
       real(real64) :: s
       if (st%yaxis == 'radius') then
-         s = merge(SOLRAD, 1.d0, st%ysolar)
+         s = UFAC(unit_id(st%runit))
       else
-         s = merge(SOLMASS, 1.d0, st%ysolar)
+         s = UFAC(unit_id(st%munit))
       end if
    end function yscale
 
@@ -279,7 +288,7 @@ contains
       if (st%xlog) then
          p = log10(max(x, LOGMIN))
       else
-         p = x
+         p = x - xoff
       end if
    end function xtrans
 
@@ -601,7 +610,7 @@ contains
       if (st%xlog) then
          v = 10.d0**max(min(w, 300.d0), -300.d0)
       else
-         v = w
+         v = w + xoff
       end if
    end function inv_x
 
@@ -766,6 +775,9 @@ contains
 
       call clamp_view()
       call set_visible_range()
+      xoff = 0.d0; xofftxt = ''
+      if (st%xoffset .and. st%xaxis == 'time' .and. .not. st%xlog) &
+         call axis_offset(st%xmin, st%xmax, unit_id(st%tunit), xoff, xofftxt)
       wx1 = xtrans(st%xmin); wx2 = xtrans(st%xmax)
       wy1 = ytrans2(st%ymin); wy2 = ytrans2(st%ymax)
       ! emit clamp box: coordinates handed to giza are limited to ~1e3
@@ -836,6 +848,8 @@ contains
       call tick_labels(wx1, wx2, wy1, wy2, xstep, ystep, xlim, .false., crowded)
       call labels(xlabel, ylabel)
       call giza_label(trim(xlabel), trim(ylabel), '')
+      ! matplotlib's spot: right end of the axis, below the tick labels
+      if (len_trim(xofftxt) > 0) call giza_annotate('B', 3.0, 1.0, 1.0, trim(xofftxt))
 
       ! make colorbar + other
       if (colored) then
@@ -1905,7 +1919,8 @@ contains
       integer(int32), intent(in) :: f
       integer(int32) :: lev, p
       real(real64) :: dy, y0, t, r, g, b, vlo, vhi, vmag
-      character(len=48) :: title
+      character(len=96) :: title
+      character(len=64) :: unit
       character(len=8) :: txt
 
       call colorbar_viewport()
@@ -1920,11 +1935,7 @@ contains
          call giza_rectangle(0.d0, 1.d0, y0, y0 + dy)
       end do
 
-      ! giza parses '_' as a subscript and has no escape for it
-      title = trim(field_names(f))
-      do while (index(title, '_') > 0)
-         title(index(title, '_'):index(title, '_')) = ' '
-      end do
+      call quantity_label(field_names(f), field_units(f), title, unit)
       vlo = field_vmin(f); vhi = field_vmax(f)
       if (field_log(f)) then
          vlo = log10(max(vlo, LOGMIN)); vhi = log10(max(vhi, LOGMIN))
@@ -1936,9 +1947,10 @@ contains
             p = floor(log10(vmag))
             vlo = vlo/10.d0**p; vhi = vhi/10.d0**p
             write (txt, '(i0)') p
-            title = trim(title)//' (10^{'//trim(txt)//'})'
+            unit = adjustl('10^{'//trim(txt)//'} '//trim(unit))
          end if
       end if
+      if (len_trim(unit) > 0) title = trim(title)//' ('//trim(unit)//')'
       call giza_set_colour_index(1)
       call giza_box('BC', 0.0, 0, 'B', 0.0, 0)
       ! a constant field has no value range to tick
@@ -2301,13 +2313,13 @@ contains
       if (st%xaxis == 'model') then
          xlabel = 'model number'
       else
-         xlabel = 'time (yr)'
+         xlabel = 'time ('//trim(ULABEL(unit_id(st%tunit)))//')'
       end if
       if (st%xlog) xlabel = 'log '//trim(xlabel)
       if (st%yaxis == 'radius') then
-         ylabel = merge('radius (R_\odot)', 'radius (cm)     ', st%ysolar)
+         ylabel = 'radius ('//trim(ULABEL(unit_id(st%runit)))//')'
       else
-         ylabel = merge('enclosed mass (M_\odot)', 'enclosed mass (g)      ', st%ysolar)
+         ylabel = 'enclosed mass ('//trim(ULABEL(unit_id(st%munit)))//')'
       end if
       if (st%ylog) ylabel = 'log '//trim(ylabel)
    end subroutine labels
@@ -2319,6 +2331,49 @@ contains
       call cache_invalidate()
       call build_axes()
    end subroutine kipp_rebuild
+
+   ! display unit for the axis of the unit's dimension ('solar' and 'cgs' set
+   ! mass and radius together), keeping the current view.  bands index the
+   ! x strips and hold cgs y, so nothing is retraced.  ok is false if unknown.
+   subroutine kipp_set_unit(arg, ok)
+      character(len=*), intent(in) :: arg
+      logical, intent(out) :: ok
+      integer(int32) :: k
+      ok = .true.
+      select case (arg)
+      case ('solar')
+         call set_y_units('Msun', 'Rsun')
+         return
+      case ('cgs')
+         call set_y_units('g', 'cm')
+         return
+      end select
+      k = unit_id(arg)
+      ok = (k > 0)
+      if (.not. ok) return
+      select case (UDIM(k))
+      case (DIM_TIME)
+         if (st%xaxis == 'time') then
+            st%xmin = st%xmin*UFAC(unit_id(st%tunit))/UFAC(k)
+            st%xmax = st%xmax*UFAC(unit_id(st%tunit))/UFAC(k)
+         end if
+         st%tunit = UNAME(k)
+         call build_axes()
+      case (DIM_MASS)
+         call set_y_units(UNAME(k), st%runit)
+      case (DIM_LENGTH)
+         call set_y_units(st%munit, UNAME(k))
+      end select
+   end subroutine kipp_set_unit
+
+   subroutine set_y_units(munit, runit)
+      character(len=*), intent(in) :: munit, runit
+      real(real64) :: f
+      f = yscale()
+      st%munit = munit; st%runit = runit
+      f = f/yscale()
+      st%ymin = st%ymin*f; st%ymax = st%ymax*f
+   end subroutine set_y_units
 
    ! print the colour fields available for `color <name>`, with the value
    ! range and binning each carries.  the fixed energy/convtype selectors are
