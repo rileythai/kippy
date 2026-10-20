@@ -16,7 +16,6 @@
       "Bash(git -C *)",
       "Bash(git submodule *)",
       "Bash(ls *)",
-      "Bash(rm -rf *)",
       "Bash(uv *)",
       "Bash(meson *)",
       "Bash(ninja *)",
@@ -27,8 +26,22 @@
     "deny": [
       "Bash(git push --force *)",
       "Bash(git reset --hard *)",
+      "Bash(rm -rf *)",
+      "Bash(rm -fr *)",
       "Read(.env*)",
       "Edit(.env*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.agents/hooks/session-start"
+          }
+        ]
+      }
     ]
   }
 }

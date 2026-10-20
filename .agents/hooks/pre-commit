@@ -1,0 +1,50 @@
+#!/bin/sh
+# git pre-commit hook from the bootstrapper skill. fails the commit when .agents/STATE.md is over its cap, or when
+# an added code comment cites a task id or an agent file, so every comment reads without .agents/.
+set -eu
+
+# the project's task id pattern (extended regex), matched as a whole word
+TASK_ID_RE='[Tt]asks? [0-9]+|K[0-9]+'
+MAX_LINES=80
+MAX_BYTES=8192
+fail=0
+
+if git cat-file -e :.agents/STATE.md 2>/dev/null; then
+    lines=$(git show :.agents/STATE.md | wc -l)
+    bytes=$(git show :.agents/STATE.md | wc -c)
+    if [ "$lines" -gt "$MAX_LINES" ] || [ "$bytes" -gt "$MAX_BYTES" ]; then
+        echo "pre-commit: .agents/STATE.md is $lines lines and $bytes bytes, over the cap of $MAX_LINES lines and $MAX_BYTES bytes. rewrite it shorter, then stage and commit again." >&2
+        fail=1
+    fi
+fi
+
+# shortcut: the comment marker comes from the file extension and string literals are not skipped, so a marker
+# inside a string starts a comment. upgrade to a per-language lexer if that trips real code.
+# fixed prefixes and no external diff, so the awk below parses the same output whatever the git config
+hits=$(git diff --cached -U0 --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ --diff-filter=ACMR |
+    awk -v id="$TASK_ID_RE" '
+/^\+\+\+ / {
+    f = substr($0, 7); m = ""
+    if (f ~ /^\.agents\//) m = ""
+    else if (f ~ /\.(f90|F90|f95|f|F|inc)$/) m = "!"
+    else if (f ~ /\.(py|sh|bash|toml|ya?ml|cfg|ini|jl|[rR]|mk)$/ || f ~ /(^|\/)(meson\.build|[Mm]akefile)$/) m = "#"
+    else if (f ~ /\.(c|h|cc|cpp|hpp|js|mjs|cjs|ts|rs|go|java)$/) m = "//|/\\*|^[ \t]*\\*"
+    next
+}
+/^@@/ { split($3, a, ","); n = substr(a[1], 2) + 0; next }
+/^\+/ {
+    s = substr($0, 2)
+    if (m != "" && match(s, m)) {
+        c = substr(s, RSTART)
+        if (c ~ ("(^|[^A-Za-z0-9_])(" id ")([^A-Za-z0-9_]|$)") || index(c, ".agents/") || index(c, "STATE.md") || index(c, "PLAN.md"))
+            print "  " f ":" n ": " c
+    }
+    n++
+}')
+if [ -n "$hits" ]; then
+    echo "pre-commit: added code comments cite a task id or an agent file:" >&2
+    echo "$hits" >&2
+    echo "comments must read without .agents/. cite a paper, equation or user-facing doc instead, put the task id in the commit message body, then stage and commit again." >&2
+    fail=1
+fi
+exit $fail

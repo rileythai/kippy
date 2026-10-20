@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# claude code SessionStart hook from the bootstrapper skill. its stdout reaches the session as context: a warning
+# when a CLAUDE.md hides AGENTS.md, then the open tasks in .agents/tasks with stale, bad-status and over-cap flags.
+set -u
+cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
+
+MAX_OPEN=5
+STALE_DAYS=14
+
+# claude code reads AGENTS.md only when none of these exist
+if [ -f AGENTS.md ]; then
+    for f in CLAUDE.md .claude/CLAUDE.md CLAUDE.local.md; do
+        [ -f "$f" ] && echo "bootstrapper: $f exists, so Claude Code does not load AGENTS.md. merge $f into AGENTS.md and delete it."
+    done
+fi
+
+[ -d .agents/tasks ] || exit 0
+cutoff=$(date -d "-$STALE_DAYS days" +%F)
+closed='^(done|dropped|superseded-by [^ :]+): .+'
+open=0 stale=0 bad=0 rows=""
+for f in .agents/tasks/*.md; do
+    [ -e "$f" ] || continue
+    # _unsorted.md and other _ files are conversion leftovers, not tasks
+    case $(basename "$f") in backlog.md|_*) continue ;; esac
+    status=$(sed -n 's/^status: *//p' "$f" | head -n 1)
+    flag=""
+    if [[ $status =~ $closed ]]; then
+        continue
+    elif [ "$status" != open ]; then
+        flag="BAD STATUS '$status'"; bad=$((bad + 1))
+    fi
+    open=$((open + 1))
+    # task files stay uncommitted until their work is done, so one with uncommitted edits counts from its last edit
+    last=$(git log -1 --format=%cs -- "$f" 2>/dev/null)
+    if [ -n "$(git status --porcelain -- "$f" 2>/dev/null)" ]; then
+        last=$(date -r "$f" +%F)
+    fi
+    if [ -n "$last" ] && [[ $last < $cutoff ]]; then
+        flag="${flag:+$flag, }STALE"; stale=$((stale + 1))
+    fi
+    title=$(sed -n '1s/^# *//p' "$f")
+    rows+="  ${last:-new}  $title${flag:+  [$flag]}"$'\n'
+done
+
+[ "$open" -eq 0 ] && exit 0
+echo ".agents: $open open tasks (cap $MAX_OPEN)"
+printf '%s' "$rows"
+[ "$stale" -gt 0 ] && echo "STALE: no commit to the task file in $STALE_DAYS days. ask the user to close or keep each one."
+[ "$bad" -gt 0 ] && echo "BAD STATUS: use open, done: <reason>, dropped: <reason> or superseded-by <id>: <reason>."
+[ "$open" -gt "$MAX_OPEN" ] && echo "over the cap of $MAX_OPEN open tasks: close, supersede or move tasks to backlog.md with the user before opening another."
+exit 0
