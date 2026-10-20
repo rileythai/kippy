@@ -334,8 +334,9 @@ The optional third word is the column's unit, for example `2 star_age Myr` or
 `8 rho g/cm^3`. The age, time step, mass and radius columns are converted from
 it on load, so it must be one of the units below for that column's role (any
 case), and any other unit stops the load with an error. Without a unit these
-columns are read in the units their names imply. A stated age, mass or radius
-unit also becomes that axis's starting display unit.
+columns are read in the units their names imply. A stated mass or radius unit
+also becomes that axis's starting display unit; the time axis picks its unit
+from the view.
 
 | Role | Units |
 | --- | --- |
