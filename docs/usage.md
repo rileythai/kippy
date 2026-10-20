@@ -20,22 +20,23 @@ Both commands use `convdata.cnv` in the current directory when `path` is
 omitted. Only the first command-line argument is used as the path.
 
 When `DISPLAY` is non-empty, `convview` will open an interactive `/xw` window. It
-renders once and enters Cursor mode (see below) before showing the `kipp>` prompt.
+renders once and enters [Cursor mode](#cursor-mode) before showing the `kipp>` prompt.
 On macOS the window needs XQuartz (see [macOS](install.md#macos)).
 
-Press `q`, `Esc` or `Ctrl-C` in the plot window to leave cursor mode and reach the prompt for REPL commands (see below).
-Click the plot window (left, middle or right button) at the prompt to enter cursor mode again; the click itself does nothing else.
-Closing the plot window quits `convview`, from cursor mode or the prompt.
-Clicks and closing are only watched when standard input is a terminal and `KIPP_SCRIPT` is not set.
 
 ## Cursor mode
 
 Cursor mode uses the mouse position in the plot window with custom Vim-like keybinds (`hjkl`). Zoom and pan operate
 in the current linear or logarithmic window coordinates.
 
-See the [command reference](commands.md#cursor-mode) for every key and mouse action.
+Press `q`, `Esc` or `Ctrl-C` in the plot window to leave cursor mode and reach the prompt for [REPL commands](#repl-commands).
+Click the plot window (left, middle or right button) at the prompt to enter cursor mode again; the click itself does nothing else.
+Closing the plot window quits `convview`, from cursor mode or the prompt.
+Clicks and closing are only watched when standard input is a terminal and `KIPP_SCRIPT` is not set.
 
 <video src="kippy_demo_v2.webm" autoplay loop muted playsinline title="Demonstration of kippy on an AGB model from MESA"></video>
+
+See the [command reference](commands.md#cursor-mode) for every key and mouse action.
 
 ### Convective hatching style
 
@@ -74,7 +75,9 @@ model. Arguably, I might be using too little time resolution here!
 
 ## REPL commands
 
-`kippy` also provides a general REPL interface to switch the color field, and axis scalings.
+`kippy` also provides a general REPL interface to switch the color field, and axis scalings. This can be entered by pressing `q`, `Esc` or `Ctrl-C` in the plot window to leave [Cursor mode](#cursor-mode).
+
+Clicking anywhere on the open plot window or entering `i` will return you to [Cursor mode](#cusor-mode).
 
 <video src="repl_demo.webm" controls muted playsinline title="Switching between the kipp> prompt and cursor mode"></video>
 

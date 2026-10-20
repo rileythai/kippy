@@ -10,6 +10,11 @@
 `kippy` is based on the interactive Kippenhahn diagram viewer originally written by [Alexander Heger](https://2sn.erc.monash.edu/) for `KEPLER`, and is maintained by [Riley Thai](https://rileythai.com).
 
 
+![Density field with the inferno colormap](custom_field_demo.png)
+![Log radius axis zoomed into the core](radius_demo.png)
+![Resolution grid during hot third dredge-up in a 6 solar-mass MESA AGB model](grid_demo.png)
+
+
 ## Quick start
 
 After [installing kippy](install.md), you can open a model in the interactive viewer:
