@@ -316,7 +316,7 @@ is used:
 | Line | Meaning |
 | --- | --- |
 | `ncols <n>` | Number of values per row. Required |
-| `<index> <name>` | Names column `<index>`, counted from 1 |
+| `<index> <name> [unit]` | Names column `<index>`, counted from 1, with an optional unit |
 | `dtype ...`, `columns`, `columns:` | Ignored |
 | Blank lines and any other line | Ignored |
 
@@ -330,10 +330,28 @@ underscores only, since a space, comma or slash ends the name. Every index must
 lie between 1 and `ncols`, and `ncols` can be at most 512. Columns without a
 name line are skipped.
 
+The optional third word is the column's unit, for example `2 star_age Myr` or
+`8 rho g/cm^3`. The age, time step, mass and radius columns are converted from
+it on load, so it must be one of the units below for that column's role (any
+case), and any other unit stops the load with an error. Without a unit these
+columns are read in the units their names imply. A stated mass or radius unit
+also becomes that axis's starting display unit; the time axis picks its unit
+from the view.
+
+| Role | Units |
+| --- | --- |
+| Age, time step | `s`, `min`, `hr`, `d`, `yr`, `kyr`, `Myr`, `Gyr` |
+| Mass | `g`, `kg`, `Msun` |
+| Radius | `cm`, `m`, `km`, `Rsun` |
+
+The mixing and energy columns ignore a unit. For a colour field, the unit only
+labels the colorbar.
+
 ### Required columns
 
 Each role below must be named by one of its accepted names, except the time
-step, which is optional.
+step, which is optional. The units are those used when the header line gives
+none.
 
 | Role | Accepted names | Units |
 | --- | --- | --- |
@@ -369,4 +387,5 @@ values as gain and negative values as loss. Cells with `|eps|` below
 Every other named column, such as `zone`, `dm_g` or `T_K` in the example above,
 is offered as a colour field under its header name, so it can be shown with
 `color <name>`. Names longer than 32 characters are truncated. See
-[colour fields](formats.md#colour-fields) for how the values are binned.
+[colour fields](formats.md#colour-fields) for how the values are binned and
+how the colorbar title shows the unit.

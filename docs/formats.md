@@ -96,3 +96,13 @@ Field values are always quantized into 24 contour bins over the minimum and maxi
 across the loaded run. Scaling switches automatically from linear to logarithmic
 when the complete range is positive and spans more than two decades. These
 generic fields are separate from the built-in `epsnuc` energy overlay.
+
+The colorbar title is the column name with its unit in brackets. The unit is
+the one a `.kipp` header states for the column, or else a unit suffix on the
+name: `_K`, `_g`, `_cm`, `_s`, `_yr`, `_gcc` (g/cm^3), `_erg_s` (erg/s) or
+`_erg_g_s` (erg/g/s), which is then dropped from the title. Units are written
+with negative exponents, so `g/cm^3`, `g/cm3` and `gcc` all show as
+g cm^-3. Underscores in a name show as spaces, and a name that is a Greek
+letter, such as `rho` or `kappa`, shows as the letter: `rho_gcc` is titled
+log ρ (g cm^-3). A unit that is not of the form `a/b^n/c` is shown as
+written.
