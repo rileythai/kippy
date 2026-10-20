@@ -106,9 +106,10 @@ module convdata
   ! renderer resolves a `color <name>` against field_names and reads the
   ! matching fld() layer.  vmin/vmax bound the colorbar (min/max across the
   ! whole model sequence), field_log selects log vs linear binning.
+  ! field_units is a unit the source states for the column, blank if none.
   integer(kind=int32), parameter :: FIELD_NBINS = 24
   integer(kind=int32) :: nfields = 0
-  character(len=32), dimension(:), allocatable :: field_names
+  character(len=32), dimension(:), allocatable :: field_names, field_units
   real(kind=real64), dimension(:), allocatable :: field_vmin, field_vmax
   logical, dimension(:), allocatable :: field_log
 

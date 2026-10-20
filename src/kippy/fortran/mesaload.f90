@@ -45,13 +45,15 @@ module mesaload
    use typedef, only: &
       int32, int64, real64
    use convdata, only: &
-      convtype, data, nuc_kind_len, idx_kind_len, field_names
+      convtype, data, nuc_kind_len, idx_kind_len, field_names, field_units
    use convbuild, only: &
       SOLMASS, SOLRAD, YR, EPS_BASE, GROW_FAC, REC_NVERS, &
       build_zones, build_energy, build_field_layer, alloc_empty_layers, &
       reset_field_registry, update_field_range, finalize_field_log
    use convload, only: &
       loadconv, sort_models
+   use units, only: &
+      unit_id, UNAME, UDIM, UFAC, DIM_TIME, DIM_MASS, DIM_LENGTH
    use monload, only: &
       loadmon
 !$ use omp_lib, only: omp_get_max_threads
@@ -59,10 +61,14 @@ module mesaload
    implicit none (type, external)
    private
 
-   public :: loadmesa, load_convection, cnv_loaded
+   public :: loadmesa, load_convection, cnv_loaded, kipp_axis_units
 
    ! the last load went through the .cnv reader, whose grid may be reduced
    logical :: cnv_loaded = .false.
+
+   ! units a .kipp header states for its age, mass and radius columns
+   ! (indexed by DIM_TIME, DIM_MASS, DIM_LENGTH), blank where it states none
+   character(len=4) :: kipp_axis_units(3) = ''
 
    ! cap on the profile-read thread pool. profile parsing is memory-bandwidth
    ! bound: throughput will peak around 3-4 threads as the shared
@@ -267,20 +273,31 @@ contains
       integer(int32) :: c_model, c_age, c_dt, c_mass, c_radius, c_mix, c_eps
       integer(int32) :: iunit, iostat, j, m, ndata, ncap, cur, nz, zcap, nf, f
       integer(int64) :: fbytes, ncells, ndone, take
-      real(real64) :: age, dtsec
+      real(real64) :: tsec, dtsec, fage, fdt, fmass, frad
       logical :: stopping
       real(real64), allocatable :: buf(:, :)
       real(real64), allocatable :: am(:), ar(:), ae(:)
       integer(int32), allocatable :: amt(:)
       integer(int32), allocatable :: fld_col(:)
-      character(len=32), allocatable :: colnames(:)
+      character(len=32), allocatable :: colnames(:), colunits(:)
+      character(len=4) :: dtunit
       type(convtype), allocatable :: recs(:)
 
       call find_kipp_header(path, hdrfile)
       call parse_kipp_header(hdrfile, ncols, c_model, c_age, c_dt, &
                              c_mass, c_radius, c_mix, c_eps)
-      call kipp_colnames(hdrfile, ncols2, colnames)
-      call register_kipp_fields(colnames, ncols, fld_col, nf)
+      call kipp_colnames(hdrfile, ncols2, colnames, colunits)
+      call register_kipp_fields(colnames, colunits, ncols, fld_col, nf)
+      ! factors to s, g and cm; unstated units are those the names imply
+      call kipp_axis_unit(colnames(c_age), colunits(c_age), DIM_TIME, YR, &
+                          fage, kipp_axis_units(DIM_TIME))
+      fdt = 1.d0
+      if (c_dt > 0) call kipp_axis_unit(colnames(c_dt), colunits(c_dt), DIM_TIME, &
+                                        1.d0, fdt, dtunit)
+      call kipp_axis_unit(colnames(c_mass), colunits(c_mass), DIM_MASS, 1.d0, &
+                          fmass, kipp_axis_units(DIM_MASS))
+      call kipp_axis_unit(colnames(c_radius), colunits(c_radius), DIM_LENGTH, 1.d0, &
+                          frad, kipp_axis_units(DIM_LENGTH))
 
       open (NEWUNIT=iunit, FILE=trim(path), STATUS='OLD', ACTION='READ', &
             FORM='UNFORMATTED', ACCESS='STREAM', CONVERT='little_endian', &
@@ -301,7 +318,7 @@ contains
       allocate (am(zcap), ar(zcap), ae(zcap), amt(zcap))
       nz = 0
       cur = -huge(1_int32)
-      age = 0.d0; dtsec = 0.d0
+      tsec = 0.d0; dtsec = 0.d0
       stopping = .false.
 
       ! pass A: build the coord/convection/eps records and, in the same sweep,
@@ -322,7 +339,7 @@ contains
             if (m /= cur) then
                ! model_number rises monotonically across the stream, so a
                ! change means the previous model is complete
-               call flush_kipp(recs, ndata, ncap, cur, nz, age, dtsec, &
+               call flush_kipp(recs, ndata, ncap, cur, nz, tsec, dtsec, &
                                am, ar, amt, ae, ifirst, ilast)
                cur = m
                nz = 0
@@ -334,18 +351,18 @@ contains
             if (m < ifirst .or. m > ilast) cycle
             nz = nz + 1
             if (nz > zcap) call grow_accum(am, ar, ae, amt, zcap)
-            am(nz) = buf(c_mass, j)
-            ar(nz) = buf(c_radius, j)
+            am(nz) = buf(c_mass, j)*fmass
+            ar(nz) = buf(c_radius, j)*frad
             amt(nz) = nint(buf(c_mix, j))
             ae(nz) = buf(c_eps, j)
-            age = buf(c_age, j)
-            if (c_dt > 0) dtsec = buf(c_dt, j)
+            tsec = buf(c_age, j)*fage
+            if (c_dt > 0) dtsec = buf(c_dt, j)*fdt
             do f = 1, nf
                call update_field_range(f, buf(fld_col(f), j))
             end do
          end do
       end do
-      call flush_kipp(recs, ndata, ncap, cur, nz, age, dtsec, &
+      call flush_kipp(recs, ndata, ncap, cur, nz, tsec, dtsec, &
                       am, ar, amt, ae, ifirst, ilast)
       close (iunit)
       deallocate (buf, am, ar, ae, amt)
@@ -485,19 +502,20 @@ contains
       call move_alloc(t, fb)
    end subroutine grow_fb
 
-   ! read the sidecar header a second time and return every column name in
-   ! order (blank for any index a line does not define), so the readers can
-   ! pick the non-structural columns to expose as colour fields.
-   subroutine kipp_colnames(hdrfile, ncols, names)
+   ! read the sidecar header a second time and return every column name and
+   ! optional unit (the line's third word) in order, blank for any index a
+   ! line does not define, so the readers can pick the non-structural columns
+   ! to expose as colour fields.
+   subroutine kipp_colnames(hdrfile, ncols, names, colunits)
       character(len=*), intent(in) :: hdrfile
       integer(int32), intent(out) :: ncols
-      character(len=32), allocatable, intent(out) :: names(:)
+      character(len=32), allocatable, intent(out) :: names(:), colunits(:)
       integer(int32), parameter :: MAXC = 512
       integer(int32) :: iunit, iostat, idx
       character(len=256) :: line, key, nm
-      character(len=32) :: tmp(MAXC)
+      character(len=32) :: tmp(MAXC), utmp(MAXC)
 
-      tmp = ''
+      tmp = ''; utmp = ''
       ncols = 0
       open (NEWUNIT=iunit, FILE=trim(hdrfile), STATUS='OLD', ACTION='READ', &
             IOSTAT=iostat)
@@ -517,20 +535,70 @@ contains
          else
             read (line, *, IOSTAT=iostat) idx, nm
             if (iostat /= 0) cycle
-            if (idx >= 1 .and. idx <= MAXC) tmp(idx) = nm
+            if (idx >= 1 .and. idx <= MAXC) then
+               tmp(idx) = nm
+               utmp(idx) = third_word(line)
+            end if
          end if
       end do
       close (iunit)
       if (ncols < 1) ncols = MAXC
-      allocate (names(ncols))
+      allocate (names(ncols), colunits(ncols))
       names = tmp(1:ncols)
+      colunits = utmp(1:ncols)
    end subroutine kipp_colnames
+
+   ! third blank-separated word of a header line ('' if none); the unit is
+   ! not read list-directed, which would end it at a '/'
+   pure function third_word(line) result(w)
+      character(len=*), intent(in) :: line
+      character(len=len(line)) :: w
+      integer(int32) :: k, p
+      w = adjustl(line)
+      do k = 1, 2
+         p = index(trim(w), ' ')
+         if (p == 0) then
+            w = ''
+            return
+         end if
+         w = adjustl(w(p:))
+      end do
+      p = index(w, ' ')
+      if (p > 0) w = w(1:p - 1)
+   end function third_word
+
+   ! cgs factor of a .kipp time/mass/radius column: def when the header
+   ! gives no unit, else the stated unit, which must be of dimension dm
+   subroutine kipp_axis_unit(col, tok, dm, def, fac, unit)
+      character(len=*), intent(in) :: col, tok
+      integer(int32), intent(in) :: dm
+      real(real64), intent(in) :: def
+      real(real64), intent(out) :: fac
+      character(len=*), intent(out) :: unit
+      character(len=64) :: allowed
+      integer(int32) :: k
+      fac = def; unit = ''
+      if (len_trim(tok) == 0) return
+      k = unit_id(tok)
+      if (k > 0) then
+         if (UDIM(k) == dm) then
+            fac = UFAC(k); unit = UNAME(k)
+            return
+         end if
+      end if
+      allowed = ''
+      do k = 1, size(UNAME)
+         if (UDIM(k) == dm) allowed = trim(allowed)//' '//trim(UNAME(k))
+      end do
+      error stop '[loadkipp] column '//trim(col)//' has unit '//trim(tok)// &
+         '; use one of'//trim(allowed)
+   end subroutine kipp_axis_unit
 
    ! register every non-structural source column as a colour field.  sets the
    ! shared convdata registry (names + reset ranges) and returns the source
    ! column index of each field.
-   subroutine register_kipp_fields(names, ncols, fld_col, nf)
-      character(len=*), intent(in) :: names(:)
+   subroutine register_kipp_fields(names, colunits, ncols, fld_col, nf)
+      character(len=*), intent(in) :: names(:), colunits(:)
       integer(int32), intent(in) :: ncols
       integer(int32), allocatable, intent(out) :: fld_col(:)
       integer(int32), intent(out) :: nf
@@ -550,6 +618,7 @@ contains
       do c = 1, nf
          fld_col(c) = tmpcol(c)
          field_names(c) = names(tmpcol(c))
+         field_units(c) = colunits(tmpcol(c))
       end do
       deallocate (tmpcol)
    end subroutine register_kipp_fields
@@ -574,12 +643,12 @@ contains
    ! turn one model's accumulated zones (surface -> center as read) into a
    ! convtype record appended to recs, growing recs as needed.  a run out of
    ! [ifirst, ilast] or with no zones produces nothing.
-   subroutine flush_kipp(recs, ndata, ncap, model, nz, age, dtsec, &
+   subroutine flush_kipp(recs, ndata, ncap, model, nz, tsec, dtsec, &
                          am, ar, amt, ae, ifirst, ilast)
       type(convtype), allocatable, intent(inout) :: recs(:)
       integer(int32), intent(inout) :: ndata, ncap
       integer(int32), intent(in) :: model, nz, ifirst, ilast
-      real(real64), intent(in) :: age, dtsec
+      real(real64), intent(in) :: tsec, dtsec
       real(real64), intent(in) :: am(:), ar(:), ae(:)
       integer(int32), intent(in) :: amt(:)
       type(convtype), allocatable :: tmp(:)
@@ -609,25 +678,25 @@ contains
          mt(k) = amt(src)
       end do
 
-      call build_kipp_record(recs(ndata), model, nz, age, dtsec, xm, rn, mt, eps)
+      call build_kipp_record(recs(ndata), model, nz, tsec, dtsec, xm, rn, mt, eps)
       deallocate (xm, rn, eps, mt)
    end subroutine flush_kipp
 
    ! fill a convtype from the center -> surface arrays of one .kipp model.
-   ! mass/radius arrive in cgs already (g, cm), so no unit scaling; the eps
+   ! age, mass and radius arrive in cgs already (s, g, cm); the eps
    ! column is net (nuclear - neutrino), driving the nuc layer with both signs
    ! while the neu layer stays empty.
-   subroutine build_kipp_record(cnv, model, nz, age, dtsec, xm, rn, mt, eps)
+   subroutine build_kipp_record(cnv, model, nz, tsec, dtsec, xm, rn, mt, eps)
       type(convtype), intent(out) :: cnv
       integer(int32), intent(in) :: model, nz
-      real(real64), intent(in) :: age, dtsec
+      real(real64), intent(in) :: tsec, dtsec
       real(real64), intent(in) :: xm(:), rn(:), eps(:)
       integer(int32), intent(in) :: mt(:)
 
       cnv%nvers = REC_NVERS
       cnv%ncyc = model
       cnv%ncoord = nz
-      cnv%timesec = age*YR
+      cnv%timesec = tsec
       cnv%dt = dtsec
       cnv%toffset = 0.d0
       cnv%idx_kind_len = idx_kind_len
