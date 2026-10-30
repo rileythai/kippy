@@ -4,7 +4,7 @@ Updated: 2026-10-30
 
 ## Target
 
-kippy v0.1.0 is on PyPI. Cursor `v` cell readout (task 30) is done on local branch `cursor-cell`, waiting for the user to try it and merge.
+kippy v0.1.0 is on PyPI. Cursor `v` cell readout (task 30) is on main.
 
 ## Open tasks
 
@@ -14,8 +14,7 @@ kippy v0.1.0 is on PyPI. Cursor `v` cell readout (task 30) is done on local bran
 
 ## Waiting on the user
 
-- try `v` in a live /xw window, then merge `cursor-cell` into main
-- range separator for negative bins (`-7.335E-01 - -6.954E-01`): keep ` - ` or switch to ` .. ` like `fields`
+- none
 
 ## Live runs
 

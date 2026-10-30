@@ -645,7 +645,7 @@ contains
       write (s1, '(es10.3)') coord_at(i, j)/yscale()
       write (s2, '(es10.3)') coord_at(i, j + 1)/yscale()
       write (sj, '(i0)') j
-      line = trim(line)//'  zone '//trim(sj)//': '//trim(adjustl(s1))//' - '// &
+      line = trim(line)//'  zone '//trim(sj)//': '//trim(adjustl(s1))//' .. '// &
              trim(adjustl(s2))//' '//trim(merge(st%runit, st%munit, st%yaxis == 'radius'))
 
       ! zone k of the convection run-length list spans [mbound(k-1), mbound(k)]
@@ -696,7 +696,7 @@ contains
          write (s1, '(es10.3)') a + (b - a)*real(lev - 1, real64)/real(FIELD_NBINS, real64)
          write (s2, '(es10.3)') a + (b - a)*real(lev, real64)/real(FIELD_NBINS, real64)
          write (cval, '(a,a,a,i0,a,i0,a)') trim(merge('log ', '    ', logscale))//' '// &
-            trim(field_names(f)), ' = '//trim(adjustl(s1))//' - '//trim(adjustl(s2)), &
+            trim(field_names(f)), ' = '//trim(adjustl(s1))//' .. '//trim(adjustl(s2)), &
             ' (bin ', lev, '/', FIELD_NBINS, ')'
          cval = adjustl(cval)
       end if
