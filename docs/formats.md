@@ -69,7 +69,7 @@ No separate neutrino layer is created.
 
 __Every__ named column not used for model metadata,
 coordinates, mixing types, or the energy generation band 
-is available as a colour field.
+is available as a colour field. See [notes on colour fields below.](#colour-fields)
 
 For a data path such as `path/to/file.kipp`, kippy first looks for
 `path/to/file.kipp.hdr` beside it. If that file is absent, it looks for
@@ -110,7 +110,7 @@ The registered colour fields are `Temperature`, `Density`, `Pressure`,
 Use `color <column>` to select a registered non-structural column. See [the usage documentation](usage.md) for more details. 
 Note that with each file format, color fields are loaded differently:
 
-- The `.kipp` reader registers every named non-structural source column .
+- The `.kipp` reader registers every named non-structural source column.
 - the MESA profiles and MONASH readers only register the curated fields listed above.
 - KEPLER-style `.cnv` files do not load any non-structural sources.
 
@@ -118,18 +118,14 @@ Use `fields` to list the selectors and ranges available for the loaded input.
 
 
 Some other notes:
-- On load, field values are always quantized into 24 contour bins over the minimum and maximum
-across the loaded run. 
-- Scaling switches automatically from linear to logarithmic
-when the complete range is positive and spans more than two decades.
-`color -<number>` shows a column in the other scale. 
-- A logarithmic scale
-starts at the smallest positive value in the run, and values at or below zero
-fall in the lowest bin. A column with no positive values has no logarithmic
-scale. 
-  - Both scales are binned at load, so switching is immediate. 
 
-- Generic fields are separate from the built-in `epsnuc` energy overlay.
+* On load, field values are always quantized into 24 contour bins over the minimum and maximum across the loaded run. 
+* Scaling switches automatically from linear to logarithmic when the complete range is positive and 
+  spans more than two decades. `color -<number>` shows a column in the other scale. 
+* A logarithmic scale starts at the smallest positive value in the run, and values at 
+  or below zero fall in the lowest bin. A column with no positive values has no 
+  logarithmic scale. Both scales are binned at load to provide immediate switching.
+* Generic fields are separate from the built-in `epsnuc` energy overlay.
 
 ### Unit recognition
 
