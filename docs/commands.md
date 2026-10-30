@@ -20,7 +20,7 @@
 | `S` | Save a numbered PDF snapshot named `convview_NNNN.pdf`. |
 | `g` | Toggle the cell and time boundary grid (see `grid` below). |
 | `m` | Toggle the model-number strip (see `models` below). |
-| `v` | Print one line describing the cell under the cursor: model number, time in the current unit (omitted on a model-number axis), zone index with its face range in the current mass or radius unit, convection type, and the selected color value. A column field prints the value range of its color bin, such as `log T_K = 6.579E+00 .. 6.733E+00 (bin 8/24)`, because only the bin is stored. An energy layer prints its level as the colorbar labels it, such as `log eps_nuc = 3 (gain)`. Zone j spans stored faces j to j+1; on a KEPLER `.cnv` these are the stored coordinates, not KEPLER zones. The convection type follows the drawn hatch, whose boundaries sit halfway between stored faces, so the two halves of a zone can report different types. Outside the data it prints `no cell under the cursor`. |
+| `v` | Print one line describing the cell under the cursor (model number, time, zone index, x/y range, convection type, and the color value bin window). |
 | `?` | Print cursor-mode help. |
 | `q`, Esc, or `Ctrl-C` | Leave cursor mode and return to the REPL. |
 

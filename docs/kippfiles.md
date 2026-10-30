@@ -8,7 +8,7 @@ This example is also available in the `example/` directory of the repository.
 The [file format](#file-format) itself is specified at the end of this page,
 for writing `.kipp` files from other codes.
 
-## Implementation
+## Implementation in MESA
 
 Adding a hook to make `.kipp` files requires overrides to three routine pointers of `subroutine extras_controls` `src/run_star_extras.f90` of the standard `star/work` directory. You may already use these hooks for other science. Worry not, because the process is designed to be modular.
 
