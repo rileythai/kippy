@@ -4,7 +4,7 @@ run = "uv sync --reinstall-package kippy"
 
 [tasks.smoke]
 description = "render a synthetic .kipp headless with the installed kippy"
-run = "uv run tools/smoke_test.py"
+run = "env -u DISPLAY uv run tools/smoke_test.py"
 
 [tasks."docs:serve"]
 description = "preview the docs site locally"
