@@ -577,6 +577,8 @@ contains
          st%showgrid = .not. st%showgrid; call kipp_render()
       case ('m')                               ! toggle the model-number strip
          st%showmodels = .not. st%showmodels; call kipp_render()
+      case ('v')                               ! print the cell under the cursor
+         call print_cell(xa, ya)
       case ('?')
          call cursor_help()
       case default
@@ -599,9 +601,108 @@ contains
       print '(a)', '  h j k l          pan left down up right  middle-click / c  centre here'
       print '(a)', '  r                reset to full view      s / S  save png / pdf snapshot'
       print '(a)', '  p                copy png to clipboard   g  toggle cell/time grid'
-      print '(a)', '  m                toggle model strip      ?  this help'
-      print '(a)', '  q / Esc / Ctrl-C back to prompt'
+      print '(a)', '  m                toggle model strip      v  print the cell under the cursor'
+      print '(a)', '  ?                this help               q / Esc / Ctrl-C  back to prompt'
    end subroutine cursor_help
+
+   ! One line describing the model/zone cell at world position (wx, wy): model,
+   ! time, zone faces, convection type and the selected colour value as drawn.
+   ! Column fields print their bin's value range, since only the bin is stored.
+   subroutine print_cell(wx, wy)
+      real(real64), intent(in) :: wx, wy
+      character(len=14), parameter :: TYPE_NAME(0:5) = [character(len=14) :: &
+         'radiative', 'neutral', 'overshoot', 'semiconvective', 'convective', 'thermohaline']
+      character(len=256) :: line
+      character(len=96) :: cval
+      character(len=12) :: s1, s2, sj
+      character(len=11) :: ename
+      integer(int32) :: i, j, k, nc, t, layer, f, n, lev, gmin, lmin
+      integer(int32), allocatable :: vals(:), idxs(:)
+      real(real64) :: yc, a, b
+      logical :: logscale
+
+      i = bisect_le(xedge, inv_x(wx))
+      j = 0; nc = 0; lev = 0
+      if (i >= 1 .and. i <= nmodels) then
+         nc = data(i)%ncoord
+         yc = inv_y(wy)*yscale()
+         if (st%yaxis == 'radius') then
+            j = bisect_le(data(i)%rncoord(1:nc), yc)
+         else
+            j = bisect_le(data(i)%xmcoord(1:nc), yc)
+         end if
+      end if
+      if (j < 1 .or. j >= nc) then
+         print '(a)', '[kipp] no cell under the cursor'
+         return
+      end if
+
+      write (line, '(a,i0)') '[kipp] model ', data(i)%ncyc
+      if (st%xaxis /= 'model') then
+         write (s1, '(es10.3)') data(i)%timesec/UFAC(unit_id(st%tunit))
+         line = trim(line)//'  t = '//trim(adjustl(s1))//' '//trim(st%tunit)
+      end if
+      write (s1, '(es10.3)') coord_at(i, j)/yscale()
+      write (s2, '(es10.3)') coord_at(i, j + 1)/yscale()
+      write (sj, '(i0)') j
+      line = trim(line)//'  zone '//trim(sj)//': '//trim(adjustl(s1))//' - '// &
+             trim(adjustl(s2))//' '//trim(merge(st%runit, st%munit, st%yaxis == 'radius'))
+
+      ! zone k of the convection run-length list spans [mbound(k-1), mbound(k)]
+      t = 0
+      do k = 1, int(data(i)%nconv, int32)
+         if (mbound(i, k) > yc) then
+            t = type_of(data(i)%yzip(k))
+            exit
+         end if
+      end do
+      line = trim(line)//'  '//trim(TYPE_NAME(t))
+
+      ! the colour value at zone j is the step-function entry starting at or below it
+      cval = ''
+      layer = layer_of_cfield()
+      f = field_of_cfield()
+      if (layer >= 0) then
+         call get_layer(i, layer, vals, idxs, n)
+      else if (f > 0) then
+         n = field_layer_len(i, f)
+         allocate (vals(n), idxs(n))
+         call get_field_buf(i, f, vals, idxs, n)
+      end if
+      if (allocated(vals)) then
+         do k = 1, n
+            if (idxs(k) > j) exit
+            lev = vals(k)
+         end do
+      end if
+      if (layer >= 0) then
+         ename = merge('log eps_nuc', 'log eps_nu ', layer /= 2)
+         call level_mins(layer, gmin, lmin)
+         lmin = max(lmin, gmin)
+         if (lev > 0) then
+            write (cval, '(a,a,i0,a)') trim(ename), ' = ', gmin + lev - 1, ' (gain)'
+         else if (lev < 0) then
+            write (cval, '(a,a,i0,a)') trim(ename), ' = ', lmin - lev - 1, ' (loss)'
+         else
+            cval = ename(5:)//' below the lowest level'
+         end if
+      else if (f > 0) then
+         logscale = field_log(f) .neqv. st%cflip
+         if (logscale) then
+            a = log10(field_vpos(f)); b = log10(field_vmax(f))
+         else
+            a = field_vmin(f); b = field_vmax(f)
+         end if
+         write (s1, '(es10.3)') a + (b - a)*real(lev - 1, real64)/real(FIELD_NBINS, real64)
+         write (s2, '(es10.3)') a + (b - a)*real(lev, real64)/real(FIELD_NBINS, real64)
+         write (cval, '(a,a,a,i0,a,i0,a)') trim(merge('log ', '    ', logscale))//' '// &
+            trim(field_names(f)), ' = '//trim(adjustl(s1))//' - '//trim(adjustl(s2)), &
+            ' (bin ', lev, '/', FIELD_NBINS, ')'
+         cval = adjustl(cval)
+      end if
+      if (len_trim(cval) > 0) line = trim(line)//'  '//trim(cval)
+      print '(a)', trim(line)
+   end subroutine print_cell
 
    ! inverse of xtrans/ytrans2: map a world (window) coordinate back to the
    ! data units st%[xy]min/max are stored in (exponent clamped for safety)
