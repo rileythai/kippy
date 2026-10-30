@@ -1,16 +1,16 @@
 # State
 
-Updated: 2026-10-21
+Updated: 2026-10-30
 
 ## Target
 
-kippy v0.1.0 is on PyPI. Next: merge the `color -N` lin/log switch (task 29).
+kippy v0.1.0 is on PyPI. Next: the cursor `v` cell readout (task 30) on local branch `cursor-cell`.
 
 ## Open tasks
 
 | ID | Title | Next step |
 |----|-------|-----------|
-| 29 | Linear/log switch for column colour fields (`color -N`) | merge `field-scale` into main, keep the PLAN.md delete on conflict |
+| 30 | Cursor key `v` prints the cell under the cursor | keep: implement on `cursor-cell`, check against a `.kipp` fixture with `key v x y` |
 
 ## Waiting on the user
 
@@ -22,4 +22,4 @@ kippy v0.1.0 is on PyPI. Next: merge the `color -N` lin/log switch (task 29).
 
 ## Next action
 
-Merge `field-scale` (`9a910f5`) into main and run `tools/smoke_test.py` on the result.
+Implement task 30 on `cursor-cell`. Rebuild with `mise run install` (editable; Fortran edits then rebuild on import), check with `mise run smoke`.
