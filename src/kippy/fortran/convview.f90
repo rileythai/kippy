@@ -132,11 +132,7 @@ program convview
             call kipp_list_fields()
          else
             call kipp_set_cfield(trim(a1), ok)
-            if (ok) then
-               call kipp_render()
-            else
-               print *, 'no color entry ', trim(a1), '   (type color for the list)'
-            end if
+            if (ok) call kipp_render()
          end if
       case ('cmap', 'colormap', 'colourmap')
          if (len_trim(a1) == 0) then
@@ -235,7 +231,7 @@ contains
       print '(a)', '  xaxis time|model      yaxis mass|radius'
       print '(a)', '  units <unit>          axis unit: auto | s min hr d yr kyr Myr Gyr | g kg Msun | cm m km Rsun | solar | cgs'
       print '(a)', '  offset on|off         matplotlib-style time offset (+3.81233 Gyr), on by default'
-      print '(a)', '  color <name|number>   colour field (color alone lists them)'
+      print '(a)', '  color <name|number>   colour field, -number for the other lin/log scale (color alone lists them)'
       print '(a)', '  cmap <name|number>    colour-field colormap, _r reverses (cmap alone lists them)'
       print '(a)', '  models on|off         grid on|off   (cell and time boundaries)'
       print '(a)', '  cursor (i)            interactive zoom/pan (or click the plot window)'
