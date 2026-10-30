@@ -2,20 +2,18 @@
 
 ## Introduction
 
-For `KEPLER`, Alex Heger developed the `.cnv` format, which 
-can be loaded with `kippy`. Each record holds the convection zones, 
-mass and radius grid, and quantized energy generation of one model 
-in an extremely compact form, which makes the file highly I/O 
-efficient compared to a full zone-by-zone profile dump.
+For `KEPLER`, Alex Heger developed the `.cnv` format. 
+Each record holds the convection zones, mass and radius grid, 
+and quantized energy generation of one model 
+in an extremely compact form for highly efficient I/O for resolution inspection.
 
-Because of its compact nature, the file format is not designed to support
-a variety of data columns. For a more general usecase with a MESA profile-style
+By design, the file format does not support many data columns. 
+For a more general use for arbitrary color fields in a MESA profile-style
 record, it is recommended to use [`.kipp` files](kippfiles.md).
 
 This page describes the binary layout `kippy` expects for `KEPLER`-style, for 
 anyone writing a writer/converter to `.cnv`. `kippy` will treat any
-path that does not match another [input format](formats.md) as a `.cnv` file;
-the suffix itself is not checked.
+path that does not match another [input format](formats.md) as a `.cnv` file.
 
 !!! tip
     `kippy` works best when you output _every single model_ for plotting. This 

@@ -20,6 +20,7 @@
 | `S` | Save a numbered PDF snapshot named `convview_NNNN.pdf`. |
 | `g` | Toggle the cell and time boundary grid (see `grid` below). |
 | `m` | Toggle the model-number strip (see `models` below). |
+| `v` | Print one line describing the cell under the cursor (model number, time, zone index, x/y range, convection type, and the color value bin window). |
 | `?` | Print cursor-mode help. |
 | `q`, Esc, or `Ctrl-C` | Leave cursor mode and return to the REPL. |
 

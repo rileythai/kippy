@@ -1,9 +1,10 @@
 # Usage
 
+
 ## Command line
 
 `convview` loads a convection data file, renders a Kippenhahn diagram, and provides a
-command prompt:
+REPL command prompt:
 
 ```text
 convview [path]
@@ -16,12 +17,16 @@ summary values for the first and last models:
 convdump [path]
 ```
 
-Both commands use `convdata.cnv` in the current directory when `path` is
-omitted. Only the first command-line argument is used as the path.
+### Making the best use of `kippy`
 
-When `DISPLAY` is non-empty, `convview` will open an interactive `/xw` window. It
-renders once and enters [Cursor mode](#cursor-mode) before showing the `kipp>` prompt.
-On macOS the window needs XQuartz (see [macOS](install.md#macos)).
+It is best to plot outputs in `kippy` which have a __complete__ cadence, i.e., an output at every timestep. This gives you the most honest portrait of the resolution you are using and the values of any fields.
+
+Many of the supported output formats are listed in the [Input formats](formats.md) page, but the two which are most useful are binary stream formats:
+
+- __`.kipp` files__: a compressed binary stream that supports an extensible set of arbitrary columns. See [__the guide for implementing an extras routine in MESA__](kippfiles.md#implementation-in-mesa)
+- __`.cnv` files__: a ultra-compressed, pre-quantized binary stream useful for resolution studies. See [__the guide for an outline of the file format__](cnvfiles.md)
+
+`kippy` also supports loading `MESA` profiles directly (though with [__some caveats__](formats.md#mesa-profiles-directory)).
 
 
 ## Cursor mode
@@ -128,6 +133,10 @@ colormaps (cmap <name|number>, append _r to reverse):
   16  RdBu
   17  turbo
 ```
+
+In the terminal, after `color 6` has selected `T_K`:
+
+![The kipp> prompt listing color fields and colormaps beside the log T field](repl_demo.png)
 
 For example, this is `color rho_gcc` with `cmap inferno` centered on a flash-driven convective region of the 4th thermal pulse of a 6.5 solar-mass AGB star.
 
