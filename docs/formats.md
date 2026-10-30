@@ -129,7 +129,7 @@ Some other notes:
 
 ### Unit recognition
 
-The colorbar title is feteched from the column name with its unit in brackets. The unit is
+The colorbar title is fetched from the column name with its unit in brackets. The unit is
 either the one a `.kipp` header states for the column, or else a unit suffix on the
 name, e.g., `_K`, `_g`, `_cm`, `_s`, `_yr`, `_gcc` (g/cm^3), `_erg_s` (erg/s) or
 `_erg_g_s` (erg/g/s).
