@@ -37,7 +37,8 @@ All notable changes to kippy are documented in this file. The format follows
 
 - Colorbars are framed strips with labels outside the strip, and their titles
   carry units and render Greek letters. Axis labels use the solar symbols.
-- The bundled giza is now 2.0.2, from the `rileythai/giza` fork.
+- The bundled giza is now upstream main after 2.0.2, which adds
+  `giza_wait_fd_or_click` and reports the window close button.
 
 ### Fixed
 

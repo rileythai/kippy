@@ -83,4 +83,4 @@ Comments must read without `.agents/`. Cite papers, equations or user-facing doc
 - 2026-10-06: LGPL-3.0-or-later, full FSF notice on every source file, copyright "the kippy authors (see AUTHORS)".
 - 2026-10-06: docs are zensical with a hand-written `api.md`, deployed to GH Pages at kippy.rileythai.com.
 - 2026-10-14: macOS wheels target 15.0; the interactive window on macOS is XQuartz `/xw`.
-- 2026-10-17: the giza submodule tracks the `rileythai/giza` fork over https so CI and anonymous clones work.
+- 2026-10-30: the giza submodule tracks upstream `danieljprice/giza` main over https, now that the fork's fixes are merged (giza PR #134).
