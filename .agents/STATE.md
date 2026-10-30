@@ -4,7 +4,7 @@ Updated: 2026-10-30
 
 ## Target
 
-kippy v0.1.0 is on PyPI. Cursor `v` cell readout (task 30) is on main.
+kippy v0.1.0 is on PyPI. Cursor `v` cell readout (task 30) is done on local branch `cursor-cell`; the user merges it.
 
 ## Open tasks
 
@@ -14,7 +14,7 @@ kippy v0.1.0 is on PyPI. Cursor `v` cell readout (task 30) is on main.
 
 ## Waiting on the user
 
-- none
+- merge `cursor-cell` into main
 
 ## Live runs
 
