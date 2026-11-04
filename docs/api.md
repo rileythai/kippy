@@ -1,6 +1,6 @@
 # kippy API reference
 
-`kippy` provides a small Python API for the bundled native Kippenhahn viewer
+`kippy` provides a minimal Python API for the Kippenhahn viewer
 and diagnostic reader.
 
 The package version is available as `kippy.__version__`.
