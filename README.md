@@ -11,17 +11,22 @@
 `kippy` is an interactive Kippenhahn diagram diagnostic tool for various stellar
 evolution codes, including [MESA](https://mesastar.org) profiles or
 [customized raw binary (`.kipp`) streams](https://kippy.rileythai.com/kippfiles/),
-[KEPLER](https://2sn.erc.monash.edu/kepler/doc)-style `.cnv` files, and MONASH `.seq`
+[KEPLER](https://2sn.erc.monash.edu/kepler/doc)-style compressed `.cnv` files, and MONASH `.seq`
 files.
 
 `kippy` is built in Fortran for high performance and out-of-memory access for
-even the longest stellar evolution runs. The plotting uses the
+even the longest stellar evolution runs. Plots use the
 [cairo](https://www.cairographics.org/) graphics library via
 [giza](https://danieljprice.github.io/giza).
 
 `kippy` is based on the interactive Kippenhahn diagram viewer originally written
-by [Alexander Heger](https://2sn.erc.monash.edu/) for KEPLER, and is maintained
+by [Alexander Heger](https://2sn.erc.monash.edu/) for [`KEPLER`](https://2sn.erc.monash.edu/kepler/doc), and is maintained
 by [Riley Thai](https://rileythai.com).
+
+Get started with:
+ * [Installing `kippy`](https://kippy.rileythai.com/install/)
+ * [How to make `MESA` write `kipp` and `cnv` files](https://kippy.rileythai.com/mesa/)
+ * [Quick Start: Usage guide for interactive and REPL interfaces](https://kippy.rileythai.com/usage/)
 
 Full documentation at <https://kippy.rileythai.com>.
 
@@ -59,11 +64,11 @@ sudo apt install -y build-essential gfortran meson ninja-build pkg-config libcai
 sudo dnf install -y gcc gcc-c++ gcc-gfortran meson ninja-build pkgconf-pkg-config cairo-devel libX11-devel freetype-devel
 ```
 
-We recommend using the [`uv`](https://uv.astral.sh) package manager for building from source:
+We recommend using the [`uv`](https://docs.astral.sh/uv/) package manager for building from source directly:
 
 ```bash
-git clone --recurse-submodules https://github.com/rileythai/kippy && cd kippy
-uv sync
+git clone --recurse-submodules https://github.com/rileythai/kippy # will clone giza submodule too
+cd kippy && uv sync
 ```
 
 See further instructions in the [installation guide](https://kippy.rileythai.com/install/) for other notes on editable

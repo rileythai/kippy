@@ -28,10 +28,11 @@ All notable changes to kippy are documented in this file. The format follows
   `Ctrl-C` leaves it.
 - Closing the plot window quits `convview`.
 - `p` copies the PNG to the macOS clipboard through `osascript`.
-- An example MESA `run_star_extras.f90` that writes `.kipp` files, in
-  `example/`.
+- An example MESA `run_star_extras.f90` that writes `.kipp` and `.cnv` files,
+  in `example/`. Both read the convection zones from `s% mixing_type`.
 - Docs: a command reference page, a `.cnv` format page, the full `.kipp`
-  format spec and video demos.
+  format spec, a page on writing `.kipp` and `.cnv` files from MESA and video
+  demos.
 
 ### Changed
 

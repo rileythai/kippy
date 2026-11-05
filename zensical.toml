@@ -14,5 +14,6 @@ nav = [
     { "kipp Files" = "kippfiles.md" },
     { "cnv Files" = "cnvfiles.md" },
   ] },
+  { "Writing from MESA" = "mesa.md" },
   { "Python API" = "api.md" },
 ]

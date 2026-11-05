@@ -2,10 +2,24 @@
 
 <video src="kippy_demo_v2.webm" autoplay loop muted playsinline title="Demonstration of kippy on an AGB model from MESA"></video>
 
-`kippy` is an interactive Kippenhahn diagram diagnostic tool for various stellar evolution codes, including
-[MESA](https://mesastar.org) profiles or [customized raw binary (`.kipp`) streams](kippfiles.md), [KEPLER](https://2sn.erc.monash.edu/kepler/doc) `.cnv` files, and MONASH `.seq` files.
+`kippy` is an interactive Kippenhahn diagram diagnostic tool for various stellar
+evolution codes, including [MESA](https://mesastar.org) profiles or
+[customized raw binary (`.kipp`) streams](https://kippy.rileythai.com/kippfiles/),
+[KEPLER](https://2sn.erc.monash.edu/kepler/doc)-style compressed `.cnv` files, and MONASH `.seq`
+files.
 
-`kippy` is built in Fortran for high performance, out-of-memory access for even the longest stellar evolution runs, and supports `pip`-installation. The plotting makes use of the [`cairo`](https://www.cairographics.org/) graphics library via [`giza`](https://danieljprice.github.io/giza).
+`kippy` is built in Fortran for high performance and out-of-memory access for
+even the longest stellar evolution runs. Plots use the
+[cairo](https://www.cairographics.org/) graphics library via
+[giza](https://danieljprice.github.io/giza).
+
+Get started with:
+
+ * [Installing `kippy`](install.md)
+ * [How to make `MESA` write `kipp` and `cnv` files](mesa.md)
+ * [Quick Start: Usage guide for interactive and REPL interfaces](usage.md)
+ * [Supported input formats](formats.md)
+ * [Python API documentation](api.md)
 
 ## Quick start
 
@@ -23,10 +37,6 @@ import kippy
 kippy.view("path/to/model.cnv")
 ```
 
-Continue with the [usage guide](usage.md), see the supported
-[input formats](formats.md), [how to adjust MESA to make `.kipp` files](kippfiles.md),
-or browse the [Python API](api.md).
-
 
 <div class="grid" markdown>
 
@@ -42,4 +52,6 @@ or browse the [Python API](api.md).
 
 
 
-`kippy` is based on the interactive Kippenhahn diagram viewer originally written by [Alexander Heger](https://2sn.erc.monash.edu/) for `KEPLER`, and is maintained by [Riley Thai](https://rileythai.com).
+`kippy` is based on the interactive Kippenhahn diagram viewer originally written
+by [Alexander Heger](https://2sn.erc.monash.edu/) for [`KEPLER`](https://2sn.erc.monash.edu/kepler/doc), and is maintained
+by [Riley Thai](https://rileythai.com).

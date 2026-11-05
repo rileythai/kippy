@@ -1,10 +1,11 @@
-   ! kipp files
+   ! kipp routines, riley thai oct 2026
    !
-   ! log a minimal set of vars every timestep for use in plotting the resolution in a 
-   ! Kippenhahn diagram (see kippy).
+   ! profile-style extensible binary record for arbitrary structure variables
+   ! per n steps, useful for Kippenhahn diagrams (see kippy).
    !
-   ! opt-in via x_integer_ctrl(kipp_idx) (cadence): <= 0 off (default), n saves every
-   ! nth step (model_number 1, 1+n, ...).  
+   ! opt-in via x_integer_ctrl(kipp_idx) (cadence): 
+   !    <= 0 :: off (default), 
+   !       n :: saves every nth step (model_number 1, 1+n, ...)
    !
    ! path from x_character_ctrl(kipp_idx) if set,
    ! else <log_directory>/profile.kipp. file is a raw stream of real(dp) vars.
@@ -15,37 +16,43 @@
    ! columns (all real(dp)):
    !   1 model_number  2 star_age(yr)      3 dt(s)      4 zone k
    !   5 dm(g)         6 m(g)              7 r(cm)      8 T(K)
-   !   9 rho(g/cc)    10 mlt_mixing_type  11 eps_net(erg/g/s)  12 L(erg/s)
+   !   9 rho(g/cc)    10 mixing_type  11 eps_net(erg/g/s)  12 L(erg/s)
    ! col 11 is eps_nuc - non_nuc_neu (i.e., MESA's net_nuclear_energy)
    !
-   ! you may add new columns if you need, this requires:
-   !    1. you change the ncols in the params file to accomodate
-   !    2. you add the relevant name to the header function below
-   !    3. you add the relevant calculated quantity to the record function below
+   ! add new columns if you need by:
+   !    1. change the ncols in the params.inc file to accomodate length
+   !    2. add a name to the header function (write_kipp_header) below
+   !    3. add the calculated quantity to the record function (write_kipp_record) below
    subroutine open_kipp_record(s, restart)
       type(star_info), pointer :: s
       logical, intent(in) :: restart
       integer :: ierr, u
       character(len=256) :: path
+      logical :: append
 
       kipp_on = .false.
-      kipp_unit = -1
+      kipp_unit = 0
       kipp_cadence = s%x_integer_ctrl(kipp_idx)
       if (kipp_cadence <= 0) return          ! feature off (default)
 
+      ! use filename if given, else default to profile.kipp
       if (len_trim(s%x_character_ctrl(kipp_idx)) > 0) then
          path = trim(s%x_character_ctrl(kipp_idx))
       else
          path = trim(s%log_directory)//'/profile.kipp'
       end if
 
+      ! restart / append checks
+      inquire (file=trim(path), exist=append)
+      append = append .and. restart
+
       ierr = 0
-      if (restart) then
+      if (append) then
          ! continue the existing file across a photo restart
          open (newunit=u, file=trim(path), access='stream', form='unformatted', &
                status='old', position='append', action='write', iostat=ierr)
       else
-         ! fresh run: truncate and (re)write the column header sidecar
+         ! fresh run: truncate
          open (newunit=u, file=trim(path), access='stream', form='unformatted', &
                status='replace', action='write', iostat=ierr)
       end if
@@ -57,8 +64,8 @@
       kipp_unit = u
       kipp_on = .true.
 
-      ! NOTE: this assumes you have already ran it once before restarting
-      if (.not. restart) call write_kipp_header(trim(path)) 
+      ! fresh run: (re)write the column header sidecar
+      if (.not. append) call write_kipp_header(trim(path))
    end subroutine open_kipp_record
 
    ! one-time text file naming the binary columns (help you read it)
@@ -108,11 +115,14 @@
          buf(7, k) = s%r(k)
          buf(8, k) = s%T(k)
          buf(9, k) = s%rho(k)
-         ! NOTE: mlt_mixing_type is the END OF STEP value
-         !       if you want the START of step, use s% mixing_type(k)
-         buf(10, k) = real(s%mlt_mixing_type(k), dp) 
+         ! NOTE: mixing_type is the START of step value unless the inlist sets
+         !       recalc_mix_info_after_evolve = .true., see
+         ! https://docs.mesastar.org/en/latest/reference/controls.html#recalc-mix-info-after-evolve
+         buf(10, k) = real(s%mixing_type(k), dp)
          buf(11, k) = s%eps_nuc(k) - s%non_nuc_neu(k)
          buf(12, k) = s%L(k)
+
+         ! add more here!
       end do
 
       ! single bulk write per step (not per cell), then flush so the file is
@@ -123,9 +133,9 @@
    end subroutine write_kipp_record
 
    subroutine close_kipp_record()
-      if (kipp_unit >= 0) then
+      if (kipp_unit /= 0) then
          close (kipp_unit)
-         kipp_unit = -1
+         kipp_unit = 0
       end if
       kipp_on = .false.
    end subroutine close_kipp_record

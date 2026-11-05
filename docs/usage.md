@@ -23,8 +23,8 @@ It is best to plot outputs in `kippy` which have a __complete__ cadence, i.e., a
 
 Many of the supported output formats are listed in the [Input formats](formats.md) page, but the two which are most useful are binary stream formats:
 
-- __`.kipp` files__: a compressed binary stream that supports an extensible set of arbitrary columns. See [__the guide for implementing an extras routine in MESA__](kippfiles.md#implementation-in-mesa)
-- __`.cnv` files__: a ultra-compressed, pre-quantized binary stream useful for resolution studies. See [__the guide for an outline of the file format__](cnvfiles.md)
+- __`.kipp` files__: a compressed binary stream that supports an extensible set of arbitrary columns. See [__the guide for implementing an extras routine in MESA__](mesa.md)
+- __`.cnv` files__: a ultra-compressed, pre-quantized binary stream useful for resolution studies. See [__the guide for implementing an extras routine in MESA__](mesa.md) and [__the outline of the file format__](cnvfiles.md#file-structure)
 
 `kippy` also supports loading `MESA` profiles directly (though with [__some caveats__](formats.md#mesa-profiles-directory)).
 

@@ -11,8 +11,10 @@ By design, the file format does not support many data columns.
 For a more general use for arbitrary color fields in a MESA profile-style
 record, it is recommended to use [`.kipp` files](kippfiles.md).
 
-This page describes the binary layout `kippy` expects for `KEPLER`-style, for 
-anyone writing a writer/converter to `.cnv`. `kippy` will treat any
+The routines to make `.cnv` files from `MESA`, and an example/tutorial for their
+implementation, are on the [writing from MESA](mesa.md) page.
+This page describes the binary layout `kippy` expects, for anyone writing a
+writer/converter to `.cnv` from other codes. `kippy` will treat any
 path that does not match another [input format](formats.md) as a `.cnv` file.
 
 !!! tip
