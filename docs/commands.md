@@ -15,6 +15,7 @@
 | `k` | Pan up by one quarter of the current y span. |
 | Middle-click or `c` | Center the current view on the cursor without changing its span. |
 | `r`, `a`, or `0` | Restore automatic limits on both axes and render the full view. |
+| `u` | Undo the last view change (zoom, range selection, pan, centering or reset). Repeated presses step further back. The history is kept when cursor mode is left and re-entered, and cleared by `xaxis` and `yaxis`. |
 | `s` | Save a numbered PNG snapshot named `convview_NNNN.png`. |
 | `p` | Copy a PNG snapshot to the system clipboard, with `wl-copy` or `xclip` on Linux and `osascript` on macOS. |
 | `S` | Save a numbered PDF snapshot named `convview_NNNN.pdf`. |

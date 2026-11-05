@@ -1,10 +1,10 @@
 # State
 
-Updated: 2026-10-30
+Updated: 2026-11-05
 
 ## Target
 
-kippy v0.1.0 is on PyPI. Cursor `v` cell readout (task 30) is done on local branch `cursor-cell`; the user merges it.
+kippy v0.1.0 is on PyPI. Cursor `u` undo (task 31) is done on local branch `undo-view`; the user merges it.
 
 ## Open tasks
 
@@ -14,7 +14,7 @@ kippy v0.1.0 is on PyPI. Cursor `v` cell readout (task 30) is done on local bran
 
 ## Waiting on the user
 
-- merge `cursor-cell` into main
+- try `u` in a live /xw window (drag zoom, x/y range), then merge `undo-view` into main
 
 ## Live runs
 

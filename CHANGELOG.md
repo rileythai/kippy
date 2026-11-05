@@ -19,6 +19,8 @@ All notable changes to kippy are documented in this file. The format follows
 - `v` in cursor mode prints the cell under the cursor: model, time, zone,
   convection type and colour value.
 - `m` in cursor mode toggles the model-number strip.
+- `u` in cursor mode undoes the last view change, stepping back through each
+  zoom, pan and reset.
 - `color -N` shows column field N in its other scale, linear or logarithmic.
 - Matplotlib colormaps `viridis`, `plasma`, `inferno`, `magma`, `cividis`,
   `Greys`, `Blues`, `Greens`, `Reds`, `Purples`, `Oranges`, `coolwarm`, `RdBu`

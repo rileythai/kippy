@@ -119,6 +119,14 @@ module kipp
 
    integer(int32) :: nsnap = 0     ! numbered snapshots from cursor mode
 
+   ! cursor-mode view history for `u`.  limits are kept in seconds (or model
+   ! number) and cgs, because the auto time unit rescales st%xmin/xmax
+   type :: view_t
+      real(real64) :: lim(4)
+      logical      :: xauto, yauto
+   end type view_t
+   type(view_t), allocatable :: views(:)
+
    ! pdf saves use a fixed one-column page (golden ratio); giza text scales
    ! with page height, so chs enlarges it to stay legible at that size
    real(real64), parameter :: PDF_WIDTH = 3.5d0     ! inches
@@ -497,9 +505,12 @@ contains
       character(len=80) :: snap
       character(len=512) :: cmd
       integer :: ierr, exitstat, cmdstat, tmpunit
+      type(view_t) :: old, new
 
       done = .false.
       xa = x; ya = y
+      if (.not. allocated(views)) allocate (views(0))
+      old = view_now()
       select case (ch)
       case ('q', K_ESC, K_CTRLC)               ! back to the REPL
          done = .true.
@@ -579,12 +590,41 @@ contains
          st%showmodels = .not. st%showmodels; call kipp_render()
       case ('v')                               ! print the cell under the cursor
          call print_cell(xa, ya)
+      case ('u')                               ! back to the previous view
+         if (size(views) == 0) then
+            print '(a)', '[kipp] no earlier view'
+         else
+            call set_view(views(size(views)))
+            views = views(:size(views) - 1)
+            call kipp_render()
+         end if
       case ('?')
          call cursor_help()
       case default
          ! ignore anything else (shift-click, unmapped keys)
       end select
+      ! compared after the render, so a cancelled selection or a pan stopped
+      ! by clamp_view at the data edge records nothing
+      new = view_now()
+      if (ch /= 'u' .and. any(new%lim /= old%lim)) views = [views, old]
    end subroutine kipp_action
+
+   function view_now() result(v)
+      type(view_t) :: v
+      real(real64) :: fx
+      fx = merge(UFAC(unit_id(st%tunit)), 1.d0, st%xaxis == 'time')
+      v%lim = [st%xmin*fx, st%xmax*fx, st%ymin*yscale(), st%ymax*yscale()]
+      v%xauto = st%xauto; v%yauto = st%yauto
+   end function view_now
+
+   subroutine set_view(v)
+      type(view_t), intent(in) :: v
+      real(real64) :: fx
+      fx = merge(UFAC(unit_id(st%tunit)), 1.d0, st%xaxis == 'time')
+      st%xmin = v%lim(1)/fx; st%xmax = v%lim(2)/fx
+      st%ymin = v%lim(3)/yscale(); st%ymax = v%lim(4)/yscale()
+      st%xauto = v%xauto; st%yauto = v%yauto
+   end subroutine set_view
 
    ! centre of the current view in the same window coordinates
    ! kipp_action expects; default position for scripted keys
@@ -602,6 +642,7 @@ contains
       print '(a)', '  r                reset to full view      s / S  save png / pdf snapshot'
       print '(a)', '  p                copy png to clipboard   g  toggle cell/time grid'
       print '(a)', '  m                toggle model strip      v  print the cell under the cursor'
+      print '(a)', '  u                undo the last view change'
       print '(a)', '  ?                this help               q / Esc / Ctrl-C  back to prompt'
    end subroutine cursor_help
 
@@ -2440,6 +2481,8 @@ contains
    subroutine kipp_rebuild()
       call cache_invalidate()
       call build_axes()
+      ! stored views hold the other axis quantity (time vs model, mass vs radius)
+      if (allocated(views)) deallocate (views)
    end subroutine kipp_rebuild
 
    ! display unit for the axis of the unit's dimension ('solar' and 'cgs' set
