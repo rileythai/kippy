@@ -1,6 +1,6 @@
 [project]
 name = "kippy"
-version = "0.1.0"
+version = "0.2.0"
 description = "Interactive Kippenhahn diagram viewer for MESA, KEPLER and MONASH stellar evolution output"
 readme = "README.md"
 license = "LGPL-3.0-or-later"

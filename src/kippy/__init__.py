@@ -32,7 +32,7 @@ from pathlib import Path
 
 __all__ = ["view", "dump", "executable", "bin_dir", "child_env"]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
 def _bundled(name: str) -> Path:
