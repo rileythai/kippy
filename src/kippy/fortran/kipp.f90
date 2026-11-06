@@ -26,13 +26,13 @@ module kipp
    use iso_c_binding, only: c_int, c_double, c_char, c_null_char
    use typedef, only: int32, real64
    use convdata, only: data, fieldlayer, &
-                       FIELD_NBINS, nfields, field_names, field_units, &
+                       FIELD_NBINS, nfields, field_names, &
                        field_vmin, field_vmax, field_vpos, field_log, &
                        RADIATIVE, NEUTRAL, OVERSHOOT, SEMICONV, CONVECTIVE, THERMOHALINE, NCONVTYPES
    use mesaload, only: load_convection, cnv_loaded, kipp_axis_units
-   use units, only: unit_id, quantity_label, axis_offset, auto_time_unit, UNAME, &
-                    UDIM, UFAC, ULABEL, DIM_TIME, DIM_MASS, DIM_LENGTH
-   use cmaps, only: cmap_rgb, CMAP_NAMES, NCMAPS
+   use units, only: unit_id, axis_offset, auto_time_unit, UNAME, &
+                    UDIM, UFAC, DIM_TIME, DIM_MASS, DIM_LENGTH
+   use cmaps, only: CMAP_NAMES, NCMAPS
    use kipp_state, only: kstate_t, st, nmodels, xval, xedge, ystar, chs
    use bands, only: band_t, bandset_t, chainset_t
    use coords, only: xoff, build_axes, kipp_autoscale, yscale, xtrans, ytrans, ytrans2, &
@@ -41,6 +41,8 @@ module kipp
                      layer_of_cfield, field_of_cfield, field_layer_len, fscale, get_layer, &
                      get_field_buf, build_conv_cache, build_energy_cache, build_field_cache, &
                      cache_invalidate
+   use axes, only: c_giza_round, fit_x_step, tick_labels, labels, draw_colorbar, draw_field_colorbar, &
+                   colormap, is_reversed
    use giza
 
    implicit none
@@ -56,14 +58,6 @@ module kipp
          integer(c_int), value :: fd
          integer(c_int) :: tty
       end function c_isatty
-      ! giza's own giza_round binding passes x by reference to a by-value
-      ! argument, so nsub never comes back
-      function c_giza_round(x, nsub) bind(C, name='giza_round') result(r)
-         import :: c_int, c_double
-         real(c_double), value :: x
-         integer(c_int), intent(out) :: nsub
-         real(c_double) :: r
-      end function c_giza_round
       ! giza's own giza_box binding narrows the tick steps to single precision,
       ! which shifts ticks off the labels on deep zooms of large values
       subroutine c_giza_box(xopt, xtick, nxsub, yopt, ytick, nysub) bind(C, name='giza_box')
@@ -78,9 +72,6 @@ module kipp
              kipp_close, kipp_autoscale, kipp_rebuild, kipp_interact, kipp_wait_input, &
              kipp_action, kipp_window_center, kipp_list_fields, kipp_set_cfield, &
              kipp_list_cmaps, kipp_set_cmap, kipp_set_unit, kstate_t, st, nmodels
-
-   ! colorbar tick-label height (x chs) and title offset (tick-label heights)
-   real(real64), parameter :: CB_TICK = 0.8d0, CB_TITLE = 3.5d0
 
    ! giza colour index of each convection type (codes in convdata)
    integer(int32), parameter :: CI_TYPE(0:NCONVTYPES) = [ &
@@ -773,193 +764,6 @@ contains
       call draw_models(wx1, wx2, wy1, wy2, vx2)
    end subroutine draw_scene
 
-   ! linear x step: giza_box's capped automatic step, widened to the next
-   ! nice step until no x label sits within one character height of the last
-   subroutine fit_x_step(wx1, wx2, wy1, wy2, xlim, step, nsub)
-      real(real64), intent(in) :: wx1, wx2, wy1, wy2, xlim
-      real(real64), intent(out) :: step
-      integer(c_int), intent(out) :: nsub
-      logical :: crowded
-      step = c_giza_round(0.2d0*(wx2 - wx1), nsub)
-      do
-         call tick_labels(wx1, wx2, wy1, wy2, step, 1.d0, xlim, .true., crowded)
-         if (.not. crowded) exit
-         step = c_giza_round(1.001d0*step, nsub)     ! next nice step up
-      end do
-   end subroutine fit_x_step
-
-   ! tick labels as giza_box 'N' writes them (same strings and placement),
-   ! minus any that would clip: an x label within one character height of the
-   ! previous one (crowded), past the page's left edge or past page x xlim,
-   ! and a y label whose text, written along the axis, would run into an x
-   ! label.  dry only tests the x labels for crowding.
-   subroutine tick_labels(wx1, wx2, wy1, wy2, xstep, ystep, xlim, dry, crowded)
-      real(real64), intent(in) :: wx1, wx2, wy1, wy2, xstep, ystep, xlim
-      logical, intent(in) :: dry
-      logical, intent(out) :: crowded
-      integer(int32), parameter :: NBOX = 64
-      real(real64) :: px1, px2, py1, py2, nx1, nx2, ny1, ny2, cw, ch, lo, hi, last
-      real(real64) :: bx(4, NBOX)        ! kept x label boxes, mm: x1 x2 y1 y2
-      integer(int32) :: nb
-      character(len=32) :: txt
-
-      call giza_get_viewport(giza_units_mm, px1, px2, py1, py2)
-      call giza_get_viewport(giza_units_normalized, nx1, nx2, ny1, ny2)
-      call giza_get_character_size(giza_units_mm, cw, ch)
-      lo = px1 - nx1*(px2 - px1)/(nx2 - nx1)
-      hi = px1 + (xlim - nx1)*(px2 - px1)/(nx2 - nx1)
-      crowded = .false.; nb = 0; last = -huge(1.d0)
-      call axis(.true., wx1, wx2, xstep, st%xlog)
-      if (.not. dry) call axis(.false., wy1, wy2, ystep, st%ylog)
-   contains
-      ! label candidates in ascending order; log axes label decades, plus 2
-      ! and 5 times each decade when the axis spans under two
-      subroutine axis(isx, w1, w2, step, logax)
-         logical, intent(in) :: isx, logax
-         real(real64), intent(in) :: w1, w2, step
-         integer(int32), parameter :: MANT(2) = [2, 5]
-         integer(int32) :: i, k, np, nv
-         if (logax) then
-            do i = nint(w1) - 1, nint(w2)
-               select case (i)
-               case (0); txt = '1'
-               case (1); txt = '10'
-               case default; write (txt, '(a,i0,a)') '10^{', i, '}'
-               end select
-               call put(isx, (real(i, real64) - w1)/(w2 - w1))
-               if (w2 - w1 >= 2.d0) cycle
-               do k = 1, 2
-                  call giza_format_number(MANT(k), i, giza_number_format_auto, txt)
-                  call put(isx, (i + log10(real(MANT(k), real64)) - w1)/(w2 - w1))
-               end do
-            end do
-         else
-            np = floor(log10(step)); nv = nint(step/10.d0**np)
-            do i = nint(w1/step), nint(w2/step)
-               call giza_format_number(i*nv, np, giza_number_format_auto, txt)
-               call put(isx, (i*step - w1)/(w2 - w1))
-            end do
-         end if
-      end subroutine axis
-
-      ! giza_box writes x labels 1.2 and y labels 0.7 character heights out
-      ! from the axis, centred on the tick, y labels along the axis
-      subroutine put(isx, ratio)
-         logical, intent(in) :: isx
-         real(real64), intent(in) :: ratio
-         real(real64) :: w, h, c, b(4)
-         integer(int32) :: k
-         if (ratio < 0.d0 .or. ratio > 1.d0) return
-         call giza_qtextlen(giza_units_mm, trim(txt), w, h)
-         if (isx) then
-            c = px1 + ratio*(px2 - px1)
-            b = [c - 0.5d0*w, c + 0.5d0*w, py1 - 1.2d0*ch, py1 - 1.2d0*ch + h]
-            if (b(1) < last + ch) then
-               crowded = .true.
-               return
-            end if
-            if (b(1) < lo .or. b(2) > hi) return
-            last = b(2)
-            if (nb < NBOX) then
-               nb = nb + 1
-               bx(:, nb) = b
-            end if
-            if (.not. dry) call giza_annotate('B', 1.2, real(ratio), 0.5, trim(txt))
-         else
-            c = py1 + ratio*(py2 - py1)
-            b = [px1 - 0.7d0*ch - h, px1 - 0.7d0*ch, c - 0.5d0*w, c + 0.5d0*w]
-            do k = 1, nb
-               if (b(1) < bx(2, k) .and. bx(1, k) < b(2) .and. &
-                   b(3) < bx(4, k) .and. bx(3, k) < b(4)) return
-            end do
-            call giza_annotate('L', 0.7, real(ratio), 0.5, trim(txt))
-         end if
-      end subroutine put
-   end subroutine tick_labels
-
-   !---------------------------------------------------------------------
-   ! draw_colorbar -- colorbar in the right margin
-   !
-   ! a framed strip of coloured cells, gain stacked at the top (deepest
-   ! blue = strongest gain) and loss at the bottom (deepest magenta), split
-   ! by a half-cell gap.  each cell's log10 level is written beside it (a
-   ! level is nint(log10|eps|), so it names the cell, not a boundary); GAIN /
-   ! title / LOSS run up the outer edge.
-   subroutine draw_colorbar(layer)
-      integer(int32), intent(in) :: layer
-      integer(int32) :: gmax, lmax, gmin, lmin, lev
-      real(real64) :: dy, y0, f
-      character(len=16) :: txt
-
-      if (.not. ecache(layer)%valid) call build_energy_cache(layer)
-      gmax = ecache(layer)%gmax; lmax = ecache(layer)%lmax
-      call level_mins(layer, gmin, lmin)
-      lmin = max(lmin, gmin)             ! convplot clamps loss min to gain min
-      if (gmax + lmax <= 0) return
-
-      dy = 1.d0/(real(gmax + lmax, real64) + merge(0.5d0, 0.d0, gmax > 0 .and. lmax > 0))
-      call colorbar_viewport()
-      call giza_set_fill(1)
-
-      ! gain cells from the top; colours match draw_energy exactly
-      do lev = 1, gmax
-         f = real(lev, real64)/real(gmax, real64)
-         call giza_set_colour_representation(7, 1.d0 - 0.85d0*f, 1.d0 - 0.85d0*f, 1.d0)
-         call giza_set_colour_index(7)
-         y0 = 1.d0 - real(gmax - lev + 1, real64)*dy
-         call giza_rectangle(0.d0, 1.d0, y0, y0 + dy)
-         write (txt, '(i0)') gmin + lev - 1
-         call cell_label(y0 + 0.5d0*dy, trim(txt))
-      end do
-      ! loss cells from the bottom
-      do lev = 1, lmax
-         f = real(lev, real64)/real(lmax, real64)
-         call giza_set_colour_representation(7, 1.d0, 1.d0 - 0.85d0*f, 1.d0)
-         call giza_set_colour_index(7)
-         y0 = real(lmax - lev, real64)*dy
-         call giza_rectangle(0.d0, 1.d0, y0, y0 + dy)
-         write (txt, '(i0)') lmin + lev - 1
-         call cell_label(y0 + 0.5d0*dy, trim(txt))
-      end do
-
-      call giza_set_colour_index(1)
-      call giza_set_fill(2)
-      if (gmax > 0) call giza_rectangle(0.d0, 1.d0, 1.d0 - real(gmax, real64)*dy, 1.d0)
-      if (lmax > 0) call giza_rectangle(0.d0, 1.d0, 0.d0, real(lmax, real64)*dy)
-      call giza_set_fill(1)
-      if (gmax > 0) call colorbar_title(1.d0, 1.d0, CB_TICK, 'GAIN')
-      if (lmax > 0) call colorbar_title(0.d0, 0.d0, CB_TICK, 'LOSS')
-      call colorbar_title(0.5d0, 0.5d0, 1.d0, &
-         merge('log \ge_{nuc} (erg g^{-1} s^{-1})', 'log \ge_{\gn} (erg g^{-1} s^{-1})', layer /= 2))
-      call giza_set_character_height(chs)
-   end subroutine draw_colorbar
-
-   ! colorbar strip viewport in the right margin, window [0,1]^2, tick text size
-   subroutine colorbar_viewport()
-      call giza_set_viewport(0.86d0, 0.88d0, 0.12d0, 0.96d0)
-      call giza_set_window(0.d0, 1.d0, 0.d0, 1.d0)
-      call giza_set_character_height(CB_TICK*chs)
-   end subroutine colorbar_viewport
-
-   ! horizontal label beside the strip at window height y
-   subroutine cell_label(y, txt)
-      real(real64), intent(in) :: y
-      character(len=*), intent(in) :: txt
-      call giza_set_colour_index(1)
-      call giza_annotate('RV', 0.5, real(y), 0.0, txt)
-   end subroutine cell_label
-
-   ! text up the colorbar's outer side at fraction y of its height, past tick
-   ! labels of up to ~5 characters; h scales chs
-   subroutine colorbar_title(y, fjust, h, txt)
-      real(real64), intent(in) :: y, fjust, h
-      character(len=*), intent(in) :: txt
-      call giza_set_colour_index(1)
-      call giza_set_character_height(h*chs)
-      call giza_annotate('R', real(CB_TITLE*CB_TICK/h), real(y), real(fjust), txt)
-      call giza_set_character_height(CB_TICK*chs)
-   end subroutine colorbar_title
-
    !---------------------------------------------------------------------
    subroutine draw_models(wx1, wx2, wy1, wy2, vx2)
       real(real64), intent(in) :: wx1, wx2, wy1, wy2, vx2
@@ -1237,80 +1041,6 @@ contains
       end associate
    end subroutine draw_field
 
-   ! colorbar for a generic column field: a framed strip of the FIELD_NBINS
-   ! contour colours spanning [vmin, vmax] across the whole run, giza's round
-   ! value ticks on its right edge, and the column name (with 'log' when
-   ! log-binned) up the page edge.
-   subroutine draw_field_colorbar(f)
-      integer(int32), intent(in) :: f
-      integer(int32) :: lev, p
-      real(real64) :: dy, y0, t, r, g, b, vlo, vhi, vmag
-      character(len=96) :: title
-      character(len=64) :: unit
-      character(len=8) :: txt
-
-      call colorbar_viewport()
-      call giza_set_fill(1)
-      dy = 1.d0/real(FIELD_NBINS, real64)
-      do lev = 1, FIELD_NBINS
-         t = (real(lev, real64) - 0.5d0)/real(FIELD_NBINS, real64)
-         call colormap(t, r, g, b)
-         call giza_set_colour_representation(7, r, g, b)
-         call giza_set_colour_index(7)
-         y0 = real(lev - 1, real64)*dy
-         call giza_rectangle(0.d0, 1.d0, y0, y0 + dy)
-      end do
-
-      call quantity_label(field_names(f), field_units(f), title, unit)
-      vlo = field_vmin(f); vhi = field_vmax(f)
-      if (field_log(f) .neqv. st%cflip) then
-         vlo = log10(field_vpos(f)); vhi = log10(vhi)
-         title = 'log '//trim(title)
-      else
-         ! move a power of ten into the title so tick labels stay short
-         vmag = max(abs(vlo), abs(vhi))
-         if (vmag >= 1.d4 .or. (vmag > 0.d0 .and. vmag < 1.d-2)) then
-            p = floor(log10(vmag))
-            vlo = vlo/10.d0**p; vhi = vhi/10.d0**p
-            write (txt, '(i0)') p
-            unit = adjustl('10^{'//trim(txt)//'} '//trim(unit))
-         end if
-      end if
-      if (len_trim(unit) > 0) title = trim(title)//' ('//trim(unit)//')'
-      call giza_set_colour_index(1)
-      call giza_box('BC', 0.0, 0, 'B', 0.0, 0)
-      ! a constant field has no value range to tick
-      if (vhi > vlo) then
-         call giza_set_window(0.d0, 1.d0, vlo, vhi)
-         call giza_box('', 0.0, 0, 'CMTIV', 0.0, 0)
-      else
-         call giza_box('', 0.0, 0, 'C', 0.0, 0)
-      end if
-
-      call colorbar_title(0.5d0, 0.5d0, 1.d0, trim(title))
-      call giza_set_character_height(chs)
-   end subroutine draw_field_colorbar
-
-   ! colour-field colormap st%cmap at t in [0,1]; a '_r' suffix reverses it
-   pure subroutine colormap(t, r, g, b)
-      real(real64), intent(in) :: t
-      real(real64), intent(out) :: r, g, b
-      integer(int32) :: n
-      n = len_trim(st%cmap)
-      if (is_reversed(st%cmap)) then
-         call cmap_rgb(st%cmap(1:n - 2), 1.d0 - t, r, g, b)
-      else
-         call cmap_rgb(st%cmap(1:n), t, r, g, b)
-      end if
-   end subroutine colormap
-
-   pure logical function is_reversed(name)
-      character(len=*), intent(in) :: name
-      integer(int32) :: n
-      n = len_trim(name)
-      is_reversed = n > 2
-      if (is_reversed) is_reversed = name(n - 1:n) == '_r'
-   end function is_reversed
 
    ! 1-based position typed as a plain number, or 0 if s is not one
    pure integer(int32) function list_index(s)
@@ -1472,22 +1202,6 @@ contains
       if (n >= 2) call giza_line(n, epx(1:n), epy(1:n))
    end subroutine grid_strip
 
-   !---------------------------------------------------------------------
-   subroutine labels(xlabel, ylabel)
-      character(len=*), intent(out) :: xlabel, ylabel
-      if (st%xaxis == 'model') then
-         xlabel = 'model number'
-      else
-         xlabel = 'time ('//trim(ULABEL(unit_id(st%tunit)))//')'
-      end if
-      if (st%xlog) xlabel = 'log '//trim(xlabel)
-      if (st%yaxis == 'radius') then
-         ylabel = 'radius ('//trim(ULABEL(unit_id(st%runit)))//')'
-      else
-         ylabel = 'enclosed mass ('//trim(ULABEL(unit_id(st%munit)))//')'
-      end if
-      if (st%ylog) ylabel = 'log '//trim(ylabel)
-   end subroutine labels
 
    !---------------------------------------------------------------------
    ! Rebuild x/y arrays after an axis-type change (called by the REPL).

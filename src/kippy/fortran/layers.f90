@@ -38,6 +38,7 @@ module layers
    !!
    !! kipp.f90 draws the caches, reads the lookups for the colorbars and `print_cell`,
    !! and calls `cache_invalidate` on file load and axis rebuild.
+   !! axes.f90 reads the energy caches and `level_mins` for the energy colorbar.
    !! This module holds the caches used by the `kipp` module.
 
    use typedef, only: int32, real64
