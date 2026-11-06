@@ -183,6 +183,7 @@ contains
             call bandset_append(bs, i, i, ivlo(k:k), ivhi(k:k))
          end if
       end do
+      ! store order: overflow bands as their interval comes, then bands closed here in slot order
       do b = 1, tr%maxbands
          if (tr%opn(b) .and. .not. tr%ext(b)) then
             call tracer_close(tr, bs, b)
@@ -198,6 +199,7 @@ contains
       type(bandset_t), intent(inout) :: bs
          !! Receives the stored bands.
       integer(int32) :: b
+      ! stored in slot order
       do b = 1, tr%maxbands
          if (tr%opn(b)) call tracer_close(tr, bs, b)
       end do

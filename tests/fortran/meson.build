@@ -26,3 +26,12 @@ test_units = executable(
   install: false,
 )
 test('units', test_units)
+
+test_bands = executable(
+  'test_bands',
+  files('test_bands.f90'),
+  fortran_args: fflags,
+  link_with: [kipp_lib, reader_lib],
+  install: false,
+)
+test('bands', test_bands)
