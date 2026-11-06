@@ -17,14 +17,25 @@
 ! License along with kippy. If not, see <https://www.gnu.org/licenses/>.
 
 ! kipp.f90 -- Kippenhahn rendering library on top of giza
-!
-! Renders a Kippenhahn diagram from any input loaded by load_convection
-! (KEPLER .cnv, MESA profiles, .kipp streams, MONASH seq)
 module kipp
+   !! Public interface of the kipp renderer.
+   !!
+   !! Renders a Kippenhahn diagram from any input read by `load_convection`.
+   !! The inputs are KEPLER `.cnv`, MESA profiles, `.kipp` streams and MONASH seq files.
+   !!
+   !! - `kipp_load` reads an input and builds the axes.
+   !! - `kipp_rebuild` rebuilds the axes after a change of axis quantity.
+   !! - `kipp_set_unit`, `kipp_set_cfield` and `kipp_set_cmap` are the REPL setters of units, colour field and colormap.
+   !! - `kipp_list_fields` and `kipp_list_cmaps` print the choices of the last two.
+   !!
+   !! convview.f90 uses only this module.
+   !! It re-exports the device and render routines of draw.f90, `kipp_autoscale` of coords.f90,
+   !! the cursor routines of cursor.f90, and `st` and `nmodels` of kipp_state.f90.
+   !! The setters write `st`.
+   !! This module holds no state.
 
    use typedef, only: int32, real64
-   use convdata, only: data, fieldlayer, &
-                       nfields, field_names, &
+   use convdata, only: data, nfields, field_names, &
                        field_vmin, field_vmax, field_vpos, field_log
    use mesaload, only: load_convection, kipp_axis_units
    use units, only: unit_id, UNAME, UDIM, DIM_TIME, DIM_MASS, DIM_LENGTH
@@ -46,9 +57,16 @@ module kipp
 
 contains
 
-   !---------------------------------------------------------------------
    subroutine kipp_load(filename)
+      !! Load every model of an input and build the axes for it.
+      !!
+      !! The reader is picked from the path by `load_convection`.
+      !! Mass and radius units stated in a `.kipp` header replace those of `st`.
+      !! The view is then fitted to the data by `kipp_autoscale`.
+      !! Fewer than 2 models stop the program with an error.
+      ! Arguments
       character(len=*), intent(in) :: filename
+         !! Path of a `.cnv`, `.kipp` or seq file, or of a MESA profiles directory.
       call load_convection(filename, 1_int32, huge(1_int32))
       nmodels = int(size(data), int32)
       if (nmodels < 2) error stop '[kipp] need at least 2 models'
@@ -59,9 +77,13 @@ contains
       call kipp_autoscale()
    end subroutine kipp_load
 
-   ! 1-based position typed as a plain number, or 0 if s is not one
    pure integer(int32) function list_index(s)
+      !! Return the 1-based list position typed in `s`.
+      !!
+      !! The result is 0 when `s` is not a plain number of at most 6 digits.
+      ! Arguments
       character(len=*), intent(in) :: s
+         !! Typed selector.
       integer(int32) :: ios
       list_index = 0
       if (len_trim(s) == 0 .or. len_trim(s) > 6) return
@@ -70,11 +92,16 @@ contains
       if (ios /= 0) list_index = 0
    end function list_index
 
-   ! select a colormap by name or by its number in kipp_list_cmaps, either
-   ! optionally suffixed '_r' to reverse it.  ok is false if unknown.
    subroutine kipp_set_cmap(arg, ok)
+      !! Select a colormap by name or by its number in `kipp_list_cmaps`.
+      !!
+      !! A `_r` suffix on either reverses the colormap.
+      !! `grey` is read as `gray`.
+      ! Arguments
       character(len=*), intent(in) :: arg
+         !! Colormap name or number, optionally suffixed `_r`.
       logical, intent(out) :: ok
+         !! False for an unknown colormap, which leaves `st%cmap` unchanged.
       character(len=len(arg)) :: base
       integer(int32) :: k
       logical :: rev
@@ -88,6 +115,7 @@ contains
    end subroutine kipp_set_cmap
 
    subroutine kipp_list_cmaps()
+      !! Print the numbered colormaps and mark the current one.
       integer(int32) :: k, n
       n = len_trim(st%cmap) - merge(2, 0, is_reversed(st%cmap))
       print '(a)', 'colormaps (cmap <name|number>, append _r to reverse):'
@@ -97,24 +125,29 @@ contains
       end do
    end subroutine kipp_list_cmaps
 
-   !---------------------------------------------------------------------
-   ! Rebuild x/y arrays after an axis-type change (called by the REPL).
-   ! Cached bands hold mass|radius interfaces, so they must be retraced.
    subroutine kipp_rebuild()
+      !! Rebuild the model axes after a change of axis quantity.
+      !!
+      !! Cached bands hold mass or radius interfaces, so they are retraced.
+      !! The view history is emptied, since its views hold the other axis quantity.
       call cache_invalidate()
       call build_axes()
-      ! stored views hold the other axis quantity (time vs model, mass vs radius)
       call clear_views()
    end subroutine kipp_rebuild
 
-   ! display unit for the axis of the unit's dimension ('solar' and 'cgs' set
-   ! mass and radius together), keeping the current view.  a time unit pins
-   ! the time axis; 'auto' lets it follow the view span again.  bands index
-   ! the x strips and hold cgs y, so nothing is retraced.  ok is false if
-   ! unknown.
    subroutine kipp_set_unit(arg, ok)
+      !! Set the display unit of the axis that matches the unit's dimension.
+      !!
+      !! `solar` and `cgs` set the mass and radius units together.
+      !! A time unit pins the time axis to it.
+      !! `auto` lets the time unit follow the visible span again.
+      !! The view limits are converted, so the view stays in place.
+      !! Bands index the x strips and hold cgs y, so nothing is retraced.
+      ! Arguments
       character(len=*), intent(in) :: arg
+         !! Unit name or alias known to `unit_id`, or `auto`, `solar` or `cgs`.
       logical, intent(out) :: ok
+         !! False for an unknown unit.
       integer(int32) :: k
       ok = .true.
       select case (arg)
@@ -143,7 +176,14 @@ contains
    end subroutine kipp_set_unit
 
    subroutine set_y_units(munit, runit)
-      character(len=*), intent(in) :: munit, runit
+      !! Set the mass and radius display units, keeping the view.
+      !!
+      !! The y view limits are rescaled by the change in `yscale`.
+      ! Arguments
+      character(len=*), intent(in) :: munit
+         !! Mass unit, a `UNAME` entry.
+      character(len=*), intent(in) :: runit
+         !! Radius unit, a `UNAME` entry.
       real(real64) :: f
       f = yscale()
       st%munit = munit; st%runit = runit
@@ -151,10 +191,11 @@ contains
       st%ymin = st%ymin*f; st%ymax = st%ymax*f
    end subroutine set_y_units
 
-   ! print the colour fields available for `color <name>`, with the value
-   ! range and binning each carries.  the fixed energy/convtype selectors are
-   ! always available; the rest come from the loaded source's columns.
    subroutine kipp_list_fields()
+      !! Print the numbered colour selectors of `color <name|number>`.
+      !!
+      !! Selectors 1 to 3 are the fixed `convtype`, `epsnuc` and `neu`.
+      !! The column fields of the loaded input follow, each with its scale and its value range across the run.
       integer(int32) :: k
       character(len=8) :: scale
       print '(a)', 'color selectors (color <name|number>):'
@@ -173,12 +214,16 @@ contains
       end do
    end subroutine kipp_list_fields
 
-   ! select the colour field by name, or by its number in kipp_list_fields; a
-   ! negative number shows that column field in its other (lin/log) scale.
-   ! ok is false, with the reason printed, when the selection is refused.
    subroutine kipp_set_cfield(arg, ok)
+      !! Select the colour field by name or by its number in `kipp_list_fields`.
+      !!
+      !! A negative number shows that column field in its other (linear or log) scale.
+      !! A refused selection prints the reason and leaves `st` unchanged.
+      ! Arguments
       character(len=*), intent(in) :: arg
+         !! Selector name, number, or negative number.
       logical, intent(out) :: ok
+         !! False when the selection is refused.
       character(len=8), parameter :: FIXED(3) = [character(len=8) :: 'convtype', 'epsnuc', 'neu']
       integer(int32) :: k
       logical :: flip
