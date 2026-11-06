@@ -36,6 +36,8 @@ module kipp
    use bands, only: band_t, bandset_t, chainset_t, tracer_t, tracer_alloc, tracer_dealloc, &
                     tracer_reset, tracer_step, tracer_flush, bandset_clear, chainset_clear, &
                     seg_append, symdiff_append, build_chains
+   use coords, only: xoff, build_axes, kipp_autoscale, yscale, xtrans, ytrans, ytrans2, &
+                     inv_x, inv_y, mbound, coord_at, bisect_le
    use giza
 
    implicit none
@@ -74,7 +76,6 @@ module kipp
              kipp_action, kipp_window_center, kipp_list_fields, kipp_set_cfield, &
              kipp_list_cmaps, kipp_set_cmap, kipp_set_unit, kstate_t, st, nmodels
 
-   real(real64), parameter :: LOGMIN = 1.d-99
    ! colorbar tick-label height (x chs) and title offset (tick-label heights)
    real(real64), parameter :: CB_TICK = 0.8d0, CB_TITLE = 3.5d0
 
@@ -111,9 +112,7 @@ module kipp
    real(real64), parameter :: PDF_WIDTH = 3.5d0     ! inches
    real(real64), parameter :: PDF_CHS = 2.0d0
 
-   ! time offset subtracted from linear x world coordinates, in st%tunit,
-   ! and its label; set per render by draw_scene
-   real(real64) :: xoff = 0.d0
+   ! label of the time offset `xoff` (coords); set per render by draw_scene
    character(len=64) :: xofftxt = ''
 
    ! per-layer energy-band cache (gain/loss bands per contour level)
@@ -167,103 +166,6 @@ contains
       call build_axes()
       call kipp_autoscale()
    end subroutine kipp_load
-
-   !---------------------------------------------------------------------
-   ! Build per-model x coordinate, strip edges, and the outer boundary.
-   subroutine build_axes()
-      integer(int32) :: i
-      if (allocated(xval)) deallocate (xval)
-      if (allocated(xedge)) deallocate (xedge)
-      if (allocated(ystar)) deallocate (ystar)
-      if (allocated(epx)) deallocate (epx, epy)
-      allocate (xval(nmodels), xedge(nmodels + 1), ystar(nmodels))
-      allocate (epx(4*nmodels + 4), epy(4*nmodels + 4))
-      do i = 1, nmodels
-         if (st%xaxis == 'model') then
-            xval(i) = real(data(i)%ncyc, real64)
-         else
-            xval(i) = data(i)%timesec/UFAC(unit_id(st%tunit))
-         end if
-         if (st%yaxis == 'radius') then
-            ystar(i) = data(i)%rncoord(data(i)%ncoord)
-         else
-            ystar(i) = data(i)%xmcoord(data(i)%ncoord)
-         end if
-      end do
-      ! strip edges = midpoints between successive model x-values
-      xedge(1) = xval(1) - 0.5d0*(xval(2) - xval(1))
-      do i = 2, nmodels
-         xedge(i) = 0.5d0*(xval(i - 1) + xval(i))
-      end do
-      xedge(nmodels + 1) = xval(nmodels) + 0.5d0*(xval(nmodels) - xval(nmodels - 1))
-   end subroutine build_axes
-
-   !---------------------------------------------------------------------
-   ! Reset auto limits from the data (called on load and `reset`).
-   subroutine kipp_autoscale()
-      if (st%xauto) then
-         st%xmin = xedge(1)
-         st%xmax = xedge(nmodels + 1)
-      end if
-      if (st%yauto) then
-         st%ymin = 0.d0
-         st%ymax = maxval(ystar)/yscale()
-         if (st%ylog) st%ymin = st%ymax*1.d-4
-      end if
-   end subroutine kipp_autoscale
-
-   !---------------------------------------------------------------------
-   pure function yscale() result(s)
-      real(real64) :: s
-      if (st%yaxis == 'radius') then
-         s = UFAC(unit_id(st%runit))
-      else
-         s = UFAC(unit_id(st%munit))
-      end if
-   end function yscale
-
-   pure function xtrans(x) result(p)
-      real(real64), intent(in) :: x
-      real(real64) :: p
-      if (st%xlog) then
-         p = log10(max(x, LOGMIN))
-      else
-         p = x - xoff
-      end if
-   end function xtrans
-
-   ! transform a cgs mass/radius coordinate into plotted units
-   pure function ytrans(c) result(p)
-      real(real64), intent(in) :: c
-      real(real64) :: p
-      p = c/yscale()
-      if (st%ylog) p = log10(max(p, LOGMIN))
-   end function ytrans
-
-   !---------------------------------------------------------------------
-   ! mass/radius coordinate at convection boundary k (0..nconv) of model i.
-   pure function mbound(i, k) result(c)
-      integer(int32), intent(in) :: i, k
-      real(real64) :: c
-      integer(int32) :: ic, nc
-      nc = data(i)%ncoord
-      if (st%yaxis == 'radius') then
-         if (k == 0) then
-            c = data(i)%rncoord(1)
-         else
-            ic = data(i)%iconv(k)
-            c = (0.5d0*(data(i)%rncoord(ic)**3 + &
-                        data(i)%rncoord(min(ic + 1, nc))**3))**(1.d0/3.d0)
-         end if
-      else
-         if (k == 0) then
-            c = data(i)%xmcoord(1)
-         else
-            ic = data(i)%iconv(k)
-            c = 0.5d0*(data(i)%xmcoord(ic) + data(i)%xmcoord(min(ic + 1, nc)))
-         end if
-      end if
-   end function mbound
 
    pure function type_of(ch) result(t)
       character(len=1), intent(in) :: ch
@@ -676,28 +578,6 @@ contains
       print '(a)', trim(line)
    end subroutine print_cell
 
-   ! inverse of xtrans/ytrans2: map a world (window) coordinate back to the
-   ! data units st%[xy]min/max are stored in (exponent clamped for safety)
-   pure function inv_x(w) result(v)
-      real(real64), intent(in) :: w
-      real(real64) :: v
-      if (st%xlog) then
-         v = 10.d0**max(min(w, 300.d0), -300.d0)
-      else
-         v = w + xoff
-      end if
-   end function inv_x
-
-   pure function inv_y(w) result(v)
-      real(real64), intent(in) :: w
-      real(real64) :: v
-      if (st%ylog) then
-         v = 10.d0**max(min(w, 300.d0), -300.d0)
-      else
-         v = w
-      end if
-   end function inv_y
-
    ! set the x limits from two world coordinates (any order); degenerate
    ! selections (double-click in place) are ignored
    subroutine set_xrange_w(a, b)
@@ -798,26 +678,6 @@ contains
       ivis1 = max(ivis0, min(nmodels, bisect_le(xedge, st%xmax)))
    end subroutine set_visible_range
 
-   ! largest k with arr(k) <= v, or 0 when v < arr(1)
-   pure function bisect_le(arr, v) result(k)
-      real(real64), intent(in) :: arr(:), v
-      integer(int32) :: k, lo, hi, mid
-      if (v < arr(1)) then
-         k = 0
-         return
-      end if
-      lo = 1; hi = int(size(arr), int32)
-      do while (lo < hi)
-         mid = (lo + hi + 1)/2
-         if (arr(mid) <= v) then
-            lo = mid
-         else
-            hi = mid - 1
-         end if
-      end do
-      k = lo
-   end function bisect_le
-
    ! pan so the given world-space point becomes the view centre
    subroutine center_at(cx, cy)
       real(real64), intent(in) :: cx, cy
@@ -888,6 +748,7 @@ contains
       ! frame composites over undefined pixmap memory (ghost artifacts)
       call giza_draw_background()
       call giza_set_character_height(chs)
+      call ensure_scratch(4*nmodels + 4)
 
       ! Convection zones are always drawn (hatched, like convplot's hatch-only
       ! patches).
@@ -1186,17 +1047,6 @@ contains
       case default; gmin = 0; lmin = 0
       end select
    end subroutine level_mins
-
-   ! limits are given in plotted (already y-scaled) units, so only apply log
-   pure function ytrans2(v) result(p)
-      real(real64), intent(in) :: v
-      real(real64) :: p
-      if (st%ylog) then
-         p = log10(max(v, LOGMIN))
-      else
-         p = v
-      end if
-   end function ytrans2
 
    !---------------------------------------------------------------------
    ! Convection zones, drawn the Alex Heger way for a lightning fast renderer.
@@ -1795,19 +1645,6 @@ contains
          end select
       end if
    end subroutine get_layer_buf
-
-   ! mass/radius coordinate at KEPLER coordinate index ic (1-based)
-   pure function coord_at(i, ic) result(c)
-      integer(int32), intent(in) :: i, ic
-      real(real64) :: c
-      integer(int32) :: j
-      j = max(1_int32, min(ic, data(i)%ncoord))
-      if (st%yaxis == "radius") then
-         c = data(i)%rncoord(j)
-      else
-         c = data(i)%xmcoord(j)
-      end if
-   end function coord_at
 
    ! max gain (positive) and loss (|negative|) levels across all models
    subroutine scan_levels(layer, gmax, lmax)
