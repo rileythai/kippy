@@ -32,6 +32,7 @@ module kipp
    use units, only: unit_id, quantity_label, axis_offset, auto_time_unit, UNAME, &
                     UDIM, UFAC, ULABEL, DIM_TIME, DIM_MASS, DIM_LENGTH
    use cmaps, only: cmap_rgb, CMAP_NAMES, NCMAPS
+   use kipp_state, only: kstate_t, st, nmodels, xval, xedge, ystar, chs
    use giza
 
    implicit none
@@ -68,7 +69,7 @@ module kipp
    public :: kipp_load, kipp_choose_device, kipp_render, kipp_save, &
              kipp_close, kipp_autoscale, kipp_rebuild, kipp_interact, kipp_wait_input, &
              kipp_action, kipp_window_center, kipp_list_fields, kipp_set_cfield, &
-             kipp_list_cmaps, kipp_set_cmap, kipp_set_unit, st, nmodels
+             kipp_list_cmaps, kipp_set_cmap, kipp_set_unit, kstate_t, st, nmodels
 
    real(real64), parameter :: LOGMIN = 1.d-99
    ! colorbar tick-label height (x chs) and title offset (tick-label heights)
@@ -79,31 +80,6 @@ module kipp
    !   'S'=3 semiconv   'C'=4 convective 'T'=5 thermohaline
    ! giza colour indices assigned to each type (0 = radiative, not drawn):
    integer(int32), parameter :: CI_TYPE(0:5) = [0, 4, 5, 3, 2, 6]
-
-   type, public :: kstate_t
-      character(len=8)  :: xaxis = 'time'      ! 'time' | 'model'
-      character(len=8)  :: yaxis = 'mass'      ! 'mass' | 'radius'
-      character(len=4)  :: tunit = 'yr'        ! display units, UNAME entries
-      character(len=4)  :: munit = 'Msun'
-      character(len=4)  :: runit = 'Rsun'
-      logical           :: tauto = .true.      ! tunit follows the view span
-      logical           :: xoffset = .true.    ! matplotlib-style time offset
-      logical           :: xlog = .false.
-      logical           :: ylog = .false.
-      real(real64)      :: xmin = 0, xmax = 0, ymin = 0, ymax = 0
-      logical           :: xauto = .true., yauto = .true.
-      character(len=32) :: cfield = 'epsnuc'   ! convtype | epsnuc | neu | any field name
-      logical           :: cflip = .false.     ! column field in its non-default lin/log scale
-      character(len=16) :: cmap = 'teal'       ! colour-field colormap: a CMAP_NAMES entry, '_r' reverses
-      character(len=64) :: device = '/xw'      ! ?
-      character(len=64) :: prefix = 'convview'
-      logical           :: interactive = .true.
-      logical           :: showmodels = .true.
-      logical           :: showgrid = .false.
-      integer           :: devid = -1
-   end type kstate_t
-
-   type(kstate_t) :: st
 
    ! characters that are delivered by the giza /xw driver for mouse events
    ! (see giza-shared.h: LEFT/MIDDLE/RIGHT click, scroll wheel, Esc)
@@ -131,12 +107,6 @@ module kipp
    ! with page height, so chs enlarges it to stay legible at that size
    real(real64), parameter :: PDF_WIDTH = 3.5d0     ! inches
    real(real64), parameter :: PDF_CHS = 2.0d0
-   real(real64) :: chs = 1.d0
-
-   integer(int32) :: nmodels = 0
-   real(real64), allocatable :: xval(:)    ! x coordinate per model (yr or ncyc)
-   real(real64), allocatable :: xedge(:)   ! model strip edges (nmodels+1)
-   real(real64), allocatable :: ystar(:)   ! outer mass/radius per model (cgs)
 
    ! time offset subtracted from linear x world coordinates, in st%tunit,
    ! and its label; set per render by draw_scene
