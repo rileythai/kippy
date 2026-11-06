@@ -33,6 +33,20 @@ module convdata
        idx_kind = SELECTED_INT_KIND(idx_kind_len), &
        nuc_kind = SELECTED_INT_KIND(nuc_kind_len)
 
+  ! convection type of a zone: the code the renderer indexes by, and the
+  ! character a .cnv file stores in yzip (docs/cnvfiles.md, zones table).
+  ! any other yzip character reads as radiative
+  integer(kind=int32), parameter :: &
+       RADIATIVE = 0, &
+       NEUTRAL = 1, &
+       OVERSHOOT = 2, &
+       SEMICONV = 3, &
+       CONVECTIVE = 4, &
+       THERMOHALINE = 5, &
+       NCONVTYPES = 5
+  character(len=1), parameter :: &
+       ZONE_CHAR(0:NCONVTYPES) = [' ', 'N', 'O', 'S', 'C', 'T']
+
   ! one arbitrary scalar column quantized into contour levels, stored the
   ! same run-length way as the nuc/neu energy layers: lev(k) is the bin
   ! (1..FIELD_NBINS) reached at coordinate index idx(k).  drives the generic

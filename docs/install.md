@@ -49,35 +49,34 @@ Fortran core and bundled giza library requires:
 - `ninja`
 - development packages for cairo, libx11, and freetype2
 
-On macOS, install the Xcode command line tools and these Homebrew packages
-(`gcc` will supply `gfortran`, `cairo` has libx11 and freetype2 deps):
+On macOS, install the Xcode command line tools and these Homebrew packages:
 
 ```bash
+# macOS
 xcode-select --install
-brew install gcc pkgconf cairo
+brew install gcc meson ninja pkgconf cairo libx11 freetype
+brew install --cask xquartz # so you can actually display stuff
 ```
 
-### Clone the repository
-
-Clone kippy with its submodules:
-
+For Linux:
 ```bash
-git clone --recurse-submodules https://github.com/rileythai/kippy
-cd kippy
+# ubuntu/debian
+sudo apt update
+sudo apt install -y build-essential gfortran meson ninja-build pkg-config libcairo2-dev libx11-dev libfreetype-dev
+```
+```bash
+# fedora/rhel/rocky/alma
+sudo dnf install -y gcc gcc-c++ gcc-gfortran meson ninja-build pkgconf-pkg-config cairo-devel libX11-devel freetype-devel
 ```
 
-If the repository was cloned without submodules, initialize them separately:
+
+### Clone and install
+
+We recommend using the [`uv`](https://docs.astral.sh/uv/) package manager for building from source directly:
 
 ```bash
-git submodule update --init --recursive
-```
-
-### Install kippy
-
-Install from the repository root:
-
-```bash
-pip install .
+git clone --recurse-submodules https://github.com/rileythai/kippy # will clone giza submodule too
+cd kippy && uv sync # will install all dependencies and install kippy
 ```
 
 For an editable install with uv:
@@ -86,14 +85,15 @@ For an editable install with uv:
 uv pip install -e .
 ```
 
-If uv needs to rebuild the editable install using the toolchain in the active
+Note that you will have to manually rebuild because editable installs are not aware of Fortran changes.
+If `uv` needs to rebuild the editable install using the toolchain in the active
 environment, disable build isolation and force a reinstall:
 
 ```bash
 uv pip install --no-build-isolation --force-reinstall -e .
 ```
 
-The build ships `libgiza.so.2` under `kippy/bin`. The Python launchers add that
+The build will ship `libgiza.so.2` under `kippy/bin`. The Python launchers add that
 directory to `LD_LIBRARY_PATH` when starting the compiled executables. On macOS
 the library is `libgiza.2.dylib`, found through the executables'
 `@loader_path` rpath.
