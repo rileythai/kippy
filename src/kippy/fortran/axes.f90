@@ -29,8 +29,8 @@ module axes
    !!   `is_reversed` tests a colormap name for the reversing suffix.
    !! - `c_giza_round` rounds a tick step to a "nice" number, 2, 5 or 10 times a power of ten.
    !!
-   !! kipp.f90 calls the tick, title and colorbar routines from `draw_scene`.
-   !! It also uses `colormap` for the colour field bands and `is_reversed` for the colormap selection.
+   !! draw.f90 calls the tick, title and colorbar routines from `draw_scene`, and `colormap` for the colour field bands.
+   !! kipp.f90 uses `is_reversed` for the colormap selection.
    !! This module holds no state.
 
    use iso_c_binding, only: c_int, c_double

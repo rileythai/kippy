@@ -22,6 +22,7 @@ module coords
    !!
    !! - `build_axes` rebuilds `xval`, `xedge` and `ystar` of kipp_state.f90.
    !! - `kipp_autoscale` sets the auto view limits from them.
+   !! - `set_time_unit` switches the time unit, keeping the view.
    !! - `xtrans`, `ytrans` and `ytrans2` map data to giza world coordinates.
    !!   `inv_x` and `inv_y` map world coordinates back.
    !! - `mbound` and `coord_at` give the mass or radius of a model's
@@ -34,18 +35,19 @@ module coords
    !! A linear axis gives display units, shifted by `xoff` on x.
    !! A logarithmic axis gives their log10.
    !!
-   !! kipp.f90 uses every routine and sets `xoff` on each render.
+   !! draw.f90 uses the transforms and sets `xoff` on each render.
+   !! kipp.f90 uses them for the cursor keys and `print_cell`, and rebuilds the axes on load and REPL changes.
    !! This module holds only `xoff`.
 
    use typedef, only: int32, real64
    use convdata, only: data
-   use units, only: unit_id, UFAC
+   use units, only: unit_id, UFAC, UNAME
    use kipp_state, only: st, nmodels, xval, xedge, ystar
 
    implicit none
    private
 
-   public :: xoff, build_axes, kipp_autoscale, yscale, xtrans, ytrans, ytrans2, &
+   public :: xoff, build_axes, kipp_autoscale, set_time_unit, yscale, xtrans, ytrans, ytrans2, &
              inv_x, inv_y, mbound, coord_at, bisect_le
 
    real(real64), parameter :: LOGMIN = 1.d-99
@@ -104,6 +106,23 @@ contains
          if (st%ylog) st%ymin = st%ymax*1.d-4
       end if
    end subroutine kipp_autoscale
+
+   subroutine set_time_unit(k)
+      !! Switch the time unit to `UNAME(k)`, keeping the view.
+      !!
+      !! On a time axis the x view limits are rescaled to the new unit.
+      !! The model axes are rebuilt.
+      ! Arguments
+      integer(int32), intent(in) :: k
+         !! Unit index into the tables of units.f90.
+      if (UNAME(k) == st%tunit) return
+      if (st%xaxis == 'time') then
+         st%xmin = st%xmin*UFAC(unit_id(st%tunit))/UFAC(k)
+         st%xmax = st%xmax*UFAC(unit_id(st%tunit))/UFAC(k)
+      end if
+      st%tunit = UNAME(k)
+      call build_axes()
+   end subroutine set_time_unit
 
    pure function yscale() result(s)
       !! Return the cgs size of one y display unit.

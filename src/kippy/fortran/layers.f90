@@ -36,10 +36,10 @@ module layers
    !!   into `conv_bands` and `conv_chains`, `ecache` and `fcache`.
    !! - `cache_invalidate` drops every cache.
    !!
-   !! kipp.f90 draws the caches, reads the lookups for the colorbars and `print_cell`,
-   !! and calls `cache_invalidate` on file load and axis rebuild.
+   !! draw.f90 draws the caches and reads the colour field lookups.
+   !! kipp.f90 reads the lookups for `print_cell` and calls `cache_invalidate` on file load and axis rebuild.
    !! axes.f90 reads the energy caches and `level_mins` for the energy colorbar.
-   !! This module holds the caches used by the `kipp` module.
+   !! This module holds the caches used by the `draw` module.
 
    use typedef, only: int32, real64
    use convdata, only: data, FIELD_NBINS, nfields, field_names, RADIATIVE, NEUTRAL, OVERSHOOT, &
