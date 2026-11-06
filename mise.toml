@@ -8,14 +8,16 @@ run = "env -u DISPLAY uv run tools/smoke_test.py"
 
 [tasks."docs:serve"]
 description = "preview the docs site locally"
+depends = ["docs:fortran"]
 run = "uvx --from 'zensical>=0.0.68' zensical serve"
 
 [tasks."docs:build"]
 description = "build the static docs site into site/"
+depends = ["docs:fortran"]
 run = "uvx --from 'zensical>=0.0.68' zensical build"
 
 [tasks."docs:fortran"]
-description = "build the fortran api docs with ford into site/fortran"
+description = "build the fortran api docs with ford into docs/fortran, which zensical copies to site/fortran"
 run = "uvx --from 'ford>=7.0.13' ford tools/ford.md"
 
 [tasks.doccheck]
