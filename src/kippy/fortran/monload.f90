@@ -21,7 +21,8 @@ module monload
    use typedef, only: &
       int16, int32, real64
    use convdata, only: &
-      convtype, data, idx_kind_len, nuc_kind_len, field_names
+      convtype, data, idx_kind_len, nuc_kind_len, field_names, &
+      ZONE_CHAR, RADIATIVE, OVERSHOOT, CONVECTIVE
    use convbuild, only: &
       SOLRAD, EPS_BASE, GROW_FAC, REC_NVERS, &
       build_zones, build_energy, build_field_layer, alloc_empty_layers, &
@@ -33,6 +34,16 @@ module monload
    private
 
    public :: loadmon
+
+   ! kcvtn convection codes as set in the MONASH code (amanda/phys.f, closed
+   ! source, no public reference). MON_SEMICONV marks the gap between the
+   ! convective envelope base and a second convective zone below it, mixed
+   ! when the code's isemi flag is set
+   integer(int16), parameter :: &
+      MON_RADIATIVE = 0, &
+      MON_CONVECTIVE = 1, &
+      MON_SEMICONV = 2, &
+      MON_OVERSHOOT = 3
 
    integer(int32), parameter :: MON_NFIELDS = 11
    real(real64), parameter :: LSUN = 3.851d33
@@ -291,10 +302,10 @@ contains
       character(len=1) :: c
 
       select case (m)
-      case (0); c = ' '
-      case (1, 2); c = 'C'
-      case (3); c = 'O'
-      case default; c = 'C'
+      case (MON_RADIATIVE); c = ZONE_CHAR(RADIATIVE)
+      case (MON_CONVECTIVE, MON_SEMICONV); c = ZONE_CHAR(CONVECTIVE)
+      case (MON_OVERSHOOT); c = ZONE_CHAR(OVERSHOOT)
+      case default; c = ZONE_CHAR(CONVECTIVE)
       end select
    end function mon_type_char
 

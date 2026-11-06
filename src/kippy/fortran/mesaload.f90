@@ -45,7 +45,8 @@ module mesaload
    use typedef, only: &
       int32, int64, real64
    use convdata, only: &
-      convtype, data, nuc_kind_len, idx_kind_len, field_names, field_units
+      convtype, data, nuc_kind_len, idx_kind_len, field_names, field_units, &
+      ZONE_CHAR, RADIATIVE, NEUTRAL, OVERSHOOT, SEMICONV, CONVECTIVE, THERMOHALINE
    use convbuild, only: &
       SOLMASS, SOLRAD, YR, EPS_BASE, GROW_FAC, REC_NVERS, &
       build_zones, build_energy, build_field_layer, alloc_empty_layers, &
@@ -75,6 +76,17 @@ module mesaload
    ! memory subsystem saturates,
    ! override at runtime with a lower OMP_NUM_THREADS
    integer(int32), parameter :: MESA_MAX_THREADS = 4
+
+   ! MESA mixing_type codes read by type_char, named as in MESA's
+   ! const/public/const_def.f90 (r26.04.1)
+   integer(int32), parameter :: &
+      MESA_NO_MIXING = 0, &
+      MESA_CONVECTIVE_MIXING = 1, &
+      MESA_OVERSHOOT_MIXING = 2, &
+      MESA_SEMICONVECTIVE_MIXING = 3, &
+      MESA_THERMOHALINE_MIXING = 4, &
+      MESA_ROTATION_MIXING = 5, &
+      MESA_LEFTOVER_CONVECTIVE_MIXING = 9
 
    ! curated MESA profile body columns offered as colour fields.  the whole
    ! profile body is huge, so only these physically useful scalars are read;
@@ -1004,21 +1016,19 @@ contains
       deallocate (zones)
    end subroutine build_mesa_zones
 
-   ! MESA mixing_types (const_def.f90) -> kipp convection type char
-   ! (kipp type_of): 0 none, 1 conv, 2 overshoot, 3 semiconv, 4 thermohaline,
-   ! 5 rotation, 9 leftover_convective; unknown codes fall back to neutral
+   ! MESA mixing_type -> yzip zone character; unknown codes fall back to neutral
    pure function type_char(m) result(c)
       integer(int32), intent(in) :: m
       character(len=1) :: c
       select case (m)
-      case (0); c = ' '
-      case (1); c = 'C'
-      case (2); c = 'O'
-      case (3); c = 'S'
-      case (4); c = 'T'
-      case (5); c = 'N'
-      case (9); c = 'C'
-      case default; c = 'N'
+      case (MESA_NO_MIXING); c = ZONE_CHAR(RADIATIVE)
+      case (MESA_CONVECTIVE_MIXING); c = ZONE_CHAR(CONVECTIVE)
+      case (MESA_OVERSHOOT_MIXING); c = ZONE_CHAR(OVERSHOOT)
+      case (MESA_SEMICONVECTIVE_MIXING); c = ZONE_CHAR(SEMICONV)
+      case (MESA_THERMOHALINE_MIXING); c = ZONE_CHAR(THERMOHALINE)
+      case (MESA_ROTATION_MIXING); c = ZONE_CHAR(NEUTRAL)
+      case (MESA_LEFTOVER_CONVECTIVE_MIXING); c = ZONE_CHAR(CONVECTIVE)
+      case default; c = ZONE_CHAR(NEUTRAL)
       end select
    end function type_char
 

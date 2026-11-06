@@ -39,7 +39,8 @@ module layers
    !! This module holds the caches.
 
    use typedef, only: int32, real64
-   use convdata, only: data, FIELD_NBINS, nfields, field_names
+   use convdata, only: data, FIELD_NBINS, nfields, field_names, RADIATIVE, NEUTRAL, OVERSHOOT, &
+                       SEMICONV, CONVECTIVE, THERMOHALINE, NCONVTYPES, ZONE_CHAR
    use kipp_state, only: st, nmodels
    use bands, only: bandset_t, chainset_t, tracer_t, tracer_alloc, tracer_dealloc, &
                     tracer_reset, tracer_step, tracer_flush, bandset_clear, chainset_clear, &
@@ -79,9 +80,9 @@ module layers
          !! Bands of each bin, `band(1:nlev)`.
    end type fcache_t
 
-   type(bandset_t) :: conv_bands(5)
+   type(bandset_t) :: conv_bands(NCONVTYPES)
       !! Bands of each convection type, indexed by the codes of `type_of`.
-   type(chainset_t) :: conv_chains(5)
+   type(chainset_t) :: conv_chains(NCONVTYPES)
       !! Exact region outline of each convection type.
    logical :: conv_valid = .false.
       !! `conv_bands` and `conv_chains` are traced.
@@ -97,19 +98,19 @@ contains
    pure function type_of(ch) result(t)
       !! Return the convection-type code of a zone character.
       !!
-      !! Codes are 0 radiative (blank or any other), 1 neutral (`N`), 2 overshoot (`O`),
-      !! 3 semiconvective (`S`), 4 convective (`C`) and 5 thermohaline (`T`).
+      !! The codes and their characters are the `ZONE_CHAR` table of convdata.f90.
+      !! An unknown character is `RADIATIVE`.
       ! Arguments
       character(len=1), intent(in) :: ch
          !! Zone character from `yzip`.
       integer(int32) :: t
       select case (ch)
-      case ('N'); t = 1
-      case ('O'); t = 2
-      case ('S'); t = 3
-      case ('C'); t = 4
-      case ('T'); t = 5
-      case default; t = 0
+      case (ZONE_CHAR(NEUTRAL)); t = NEUTRAL
+      case (ZONE_CHAR(OVERSHOOT)); t = OVERSHOOT
+      case (ZONE_CHAR(SEMICONV)); t = SEMICONV
+      case (ZONE_CHAR(CONVECTIVE)); t = CONVECTIVE
+      case (ZONE_CHAR(THERMOHALINE)); t = THERMOHALINE
+      case default; t = RADIATIVE
       end select
    end function type_of
 
@@ -411,7 +412,7 @@ contains
       allocate (ivlo(maxnc), ivhi(maxnc), plo(maxnc), phi(maxnc))
       allocate (bp(4*maxnc + 4))
 
-      do t = 1, 5
+      do t = 1, NCONVTYPES
          call bandset_clear(conv_bands(t))
          call chainset_clear(conv_chains(t))
          call tracer_reset(tr)
@@ -532,7 +533,7 @@ contains
    subroutine cache_invalidate()
       !! Drop every cached band, on file load or axis rebuild.
       integer(int32) :: t, l
-      do t = 1, 5
+      do t = 1, NCONVTYPES
          call bandset_clear(conv_bands(t))
          call chainset_clear(conv_chains(t))
       end do

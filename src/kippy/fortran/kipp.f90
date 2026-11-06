@@ -27,7 +27,8 @@ module kipp
    use typedef, only: int32, real64
    use convdata, only: data, fieldlayer, &
                        FIELD_NBINS, nfields, field_names, field_units, &
-                       field_vmin, field_vmax, field_vpos, field_log
+                       field_vmin, field_vmax, field_vpos, field_log, &
+                       RADIATIVE, NEUTRAL, OVERSHOOT, SEMICONV, CONVECTIVE, THERMOHALINE, NCONVTYPES
    use mesaload, only: load_convection, cnv_loaded, kipp_axis_units
    use units, only: unit_id, quantity_label, axis_offset, auto_time_unit, UNAME, &
                     UDIM, UFAC, ULABEL, DIM_TIME, DIM_MASS, DIM_LENGTH
@@ -81,11 +82,14 @@ module kipp
    ! colorbar tick-label height (x chs) and title offset (tick-label heights)
    real(real64), parameter :: CB_TICK = 0.8d0, CB_TITLE = 3.5d0
 
-   ! convection-type codes
-   !   ' '=0 radiative  'N'=1 neutral  'O'=2 overshoot
-   !   'S'=3 semiconv   'C'=4 convective 'T'=5 thermohaline
-   ! giza colour indices assigned to each type (0 = radiative, not drawn):
-   integer(int32), parameter :: CI_TYPE(0:5) = [0, 4, 5, 3, 2, 6]
+   ! giza colour index of each convection type (codes in convdata)
+   integer(int32), parameter :: CI_TYPE(0:NCONVTYPES) = [ &
+                                0, &   ! RADIATIVE, not drawn
+                                4, &   ! NEUTRAL
+                                5, &   ! OVERSHOOT
+                                3, &   ! SEMICONV
+                                2, &   ! CONVECTIVE
+                                6]     ! THERMOHALINE
 
    ! characters that are delivered by the giza /xw driver for mouse events
    ! (see giza-shared.h: LEFT/MIDDLE/RIGHT click, scroll wheel, Esc)
@@ -449,7 +453,7 @@ contains
    ! Column fields print their bin's value range, since only the bin is stored.
    subroutine print_cell(wx, wy)
       real(real64), intent(in) :: wx, wy
-      character(len=14), parameter :: TYPE_NAME(0:5) = [character(len=14) :: &
+      character(len=14), parameter :: TYPE_NAME(0:NCONVTYPES) = [character(len=14) :: &
          'radiative', 'neutral', 'overshoot', 'semiconvective', 'convective', 'thermohaline']
       character(len=256) :: line
       character(len=96) :: cval
@@ -488,7 +492,7 @@ contains
              trim(adjustl(s2))//' '//trim(merge(st%runit, st%munit, st%yaxis == 'radius'))
 
       ! zone k of the convection run-length list spans [mbound(k-1), mbound(k)]
-      t = 0
+      t = RADIATIVE
       do k = 1, int(data(i)%nconv, int32)
          if (mbound(i, k) > yc) then
             t = type_of(data(i)%yzip(k))
@@ -1023,7 +1027,7 @@ contains
       integer(int32) :: t
       if (.not. conv_valid) call build_conv_cache()
       call giza_set_line_width(1.d0)
-      do t = 1, 5
+      do t = 1, NCONVTYPES
          if (conv_bands(t)%nb == 0) cycle
          call giza_set_colour_index(CI_TYPE(t))
          call set_hatch_for_type(t)
@@ -1037,15 +1041,15 @@ contains
    subroutine set_hatch_for_type(t)
       integer(int32), intent(in) :: t
       select case (t)
-      case (4)                                   ! convective  '/'
+      case (CONVECTIVE)                          ! '/'
          call giza_set_fill(3); call giza_set_hatching_style(45.d0, 1.0d0, 0.d0)
-      case (5)                                   ! thermohaline '\'
+      case (THERMOHALINE)                        ! '\'
          call giza_set_fill(3); call giza_set_hatching_style(135.d0, 1.0d0, 0.d0)
-      case (2)                                   ! overshoot   '++'
+      case (OVERSHOOT)                           ! '++'
          call giza_set_fill(4); call giza_set_hatching_style(0.d0, 1.0d0, 0.d0)
-      case (1)                                   ! neutral     'X'
+      case (NEUTRAL)                             ! 'X'
          call giza_set_fill(4); call giza_set_hatching_style(45.d0, 1.2d0, 0.d0)
-      case (3)                                   ! semiconv    'XX'
+      case (SEMICONV)                            ! 'XX'
          call giza_set_fill(4); call giza_set_hatching_style(45.d0, 0.7d0, 0.d0)
       case default
          call giza_set_fill(3); call giza_set_hatching_style(45.d0, 1.0d0, 0.d0)
