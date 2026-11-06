@@ -33,11 +33,13 @@ module kipp
                     UDIM, UFAC, ULABEL, DIM_TIME, DIM_MASS, DIM_LENGTH
    use cmaps, only: cmap_rgb, CMAP_NAMES, NCMAPS
    use kipp_state, only: kstate_t, st, nmodels, xval, xedge, ystar, chs
-   use bands, only: band_t, bandset_t, chainset_t, tracer_t, tracer_alloc, tracer_dealloc, &
-                    tracer_reset, tracer_step, tracer_flush, bandset_clear, chainset_clear, &
-                    seg_append, symdiff_append, build_chains
+   use bands, only: band_t, bandset_t, chainset_t
    use coords, only: xoff, build_axes, kipp_autoscale, yscale, xtrans, ytrans, ytrans2, &
                      inv_x, inv_y, mbound, coord_at, bisect_le
+   use layers, only: conv_bands, conv_chains, conv_valid, ecache, fcache, type_of, level_mins, &
+                     layer_of_cfield, field_of_cfield, field_layer_len, fscale, get_layer, &
+                     get_field_buf, build_conv_cache, build_energy_cache, build_field_cache, &
+                     cache_invalidate
    use giza
 
    implicit none
@@ -115,30 +117,6 @@ module kipp
    ! label of the time offset `xoff` (coords); set per render by draw_scene
    character(len=64) :: xofftxt = ''
 
-   ! per-layer energy-band cache (gain/loss bands per contour level)
-   type :: ecache_t
-      logical :: valid = .false.
-      integer(int32) :: gmax = 0, lmax = 0
-      type(bandset_t), allocatable :: gain(:), loss(:)
-   end type ecache_t
-
-   ! per-field band cache: one nested bandset per contour bin (bin 1 covers
-   ! the whole star, higher bins nest inward), filled on first use of a
-   ! `color <field>` selection, per field and scale
-   type :: fcache_t
-      logical :: valid = .false.
-      integer(int32) :: nlev = 0
-      type(bandset_t), allocatable :: band(:)
-   end type fcache_t
-
-   ! cached traced bands, invalidated on file load and axis rebuild;
-   ! energy bands cached per layer so `color` switches do not retrace
-   type(bandset_t) :: conv_bands(5)
-   type(chainset_t):: conv_chains(5)   ! exact region outlines per conv type
-   logical         :: conv_valid = .false.
-   type(ecache_t)  :: ecache(0:2)
-   type(fcache_t), allocatable :: fcache(:, :)   ! (scale, colour field), as fld
-
    real(real64), allocatable :: epx(:), epy(:)   ! polygon emit scratch
 
    ! emit clamp box in transformed coordinates (set per render by
@@ -166,19 +144,6 @@ contains
       call build_axes()
       call kipp_autoscale()
    end subroutine kipp_load
-
-   pure function type_of(ch) result(t)
-      character(len=1), intent(in) :: ch
-      integer(int32) :: t
-      select case (ch)
-      case ('N'); t = 1
-      case ('O'); t = 2
-      case ('S'); t = 3
-      case ('C'); t = 4
-      case ('T'); t = 5
-      case default; t = 0
-      end select
-   end function type_of
 
    !---------------------------------------------------------------------
    ! Device lifecycle: interactive (/xw) opens once and pages; file mode
@@ -1033,21 +998,6 @@ contains
       call giza_set_window(wx1, wx2, wy1, wy2)
    end subroutine draw_models
 
-   ! minimum log10 level values (gain, loss) for a layer, from the file
-   ! header, read as consecutive (gain, loss) pairs per layer -- the
-   ! historic KEPLER field names are misleading (minloss is the nuc GAIN
-   ! minimum).
-   subroutine level_mins(layer, gmin, lmin)
-      integer(int32), intent(in)  :: layer
-      integer(int32), intent(out) :: gmin, lmin
-      select case (layer)
-      case (0); gmin = int(data(1)%minloss, int32); lmin = int(data(1)%mingain, int32)
-      case (1); gmin = int(data(1)%minnucl, int32); lmin = int(data(1)%minnucg, int32)
-      case (2); gmin = int(data(1)%minneul, int32); lmin = int(data(1)%minneug, int32)
-      case default; gmin = 0; lmin = 0
-      end select
-   end subroutine level_mins
-
    !---------------------------------------------------------------------
    ! Convection zones, drawn the Alex Heger way for a lightning fast renderer.
    !
@@ -1082,63 +1032,6 @@ contains
       end do
    end subroutine draw_convection
 
-   ! Trace all five convection types into the band cache (one pass each),
-   ! and build each type's exact region outline: the horizontal interface
-   ! edges of every interval plus, at every strip edge, the symmetric
-   ! difference between the adjacent models' interval sets (y covered on
-   ! one side only).  Seams where the tracer closes/restarts bands are
-   ! covered on both sides, so they never enter the outline.
-   subroutine build_conv_cache()
-      type(tracer_t) :: tr
-      integer(int32) :: t, i, j, m, pm, maxnc, ns
-      real(real64), allocatable :: ivlo(:), ivhi(:), plo(:), phi(:), bp(:)
-      integer(int32), allocatable :: se0(:), se1(:)
-      real(real64), allocatable :: sy0(:), sy1(:)
-
-      maxnc = 1
-      do i = 1, nmodels
-         maxnc = max(maxnc, int(data(i)%nconv, int32))
-      end do
-      call tracer_alloc(tr, 64_int32, nmodels)
-      allocate (ivlo(maxnc), ivhi(maxnc), plo(maxnc), phi(maxnc))
-      allocate (bp(4*maxnc + 4))
-
-      do t = 1, 5
-         call bandset_clear(conv_bands(t))
-         call chainset_clear(conv_chains(t))
-         call tracer_reset(tr)
-         ns = 0; pm = 0
-         do i = 1, nmodels
-            ! intervals of this type in model i (centre -> surface order)
-            m = 0
-            do j = 1, int(data(i)%nconv, int32)
-               if (type_of(data(i)%yzip(j)) /= t) cycle
-               m = m + 1
-               ivlo(m) = mbound(i, j - 1)
-               ivhi(m) = mbound(i, j)
-            end do
-            call tracer_step(tr, conv_bands(t), i, ivlo, ivhi, m)
-            ! outline: vertical boundary at strip edge i, horizontals of model i
-            call symdiff_append(plo, phi, pm, ivlo, ivhi, m, i, bp, &
-                                se0, se1, sy0, sy1, ns)
-            do j = 1, m
-               if (ivhi(j) <= ivlo(j)) cycle
-               call seg_append(se0, se1, sy0, sy1, ns, i, i + 1, ivlo(j), ivlo(j))
-               call seg_append(se0, se1, sy0, sy1, ns, i, i + 1, ivhi(j), ivhi(j))
-            end do
-            pm = m; plo(1:m) = ivlo(1:m); phi(1:m) = ivhi(1:m)
-         end do
-         call tracer_flush(tr, conv_bands(t))
-         ! right boundary of the last model
-         call symdiff_append(plo, phi, pm, ivlo, ivhi, 0_int32, nmodels + 1, bp, &
-                             se0, se1, sy0, sy1, ns)
-         call build_chains(conv_chains(t), se0, se1, sy0, sy1, ns)
-      end do
-      deallocate (ivlo, ivhi, plo, phi, bp)
-      call tracer_dealloc(tr)
-      conv_valid = .true.
-   end subroutine build_conv_cache
-
    ! per-type hatch matching ConvPlot.conv_hatch: conv '/', thal '\', the
    ! remaining (semiconv/neutral/overshoot) crossed at varying density.
    subroutine set_hatch_for_type(t)
@@ -1158,29 +1051,6 @@ contains
          call giza_set_fill(3); call giza_set_hatching_style(45.d0, 1.0d0, 0.d0)
       end select
    end subroutine set_hatch_for_type
-
-   !---------------------------------------------------------------------
-   ! Band cache plumbing.
-
-   ! drop every cached band (file load or axis rebuild)
-   subroutine cache_invalidate()
-      integer(int32) :: t, l
-      do t = 1, 5
-         call bandset_clear(conv_bands(t))
-         call chainset_clear(conv_chains(t))
-      end do
-      conv_valid = .false.
-      do l = 0, 2
-         if (allocated(ecache(l)%gain)) deallocate (ecache(l)%gain)
-         if (allocated(ecache(l)%loss)) deallocate (ecache(l)%loss)
-         ecache(l)%gmax = 0; ecache(l)%lmax = 0
-         ecache(l)%valid = .false.
-      end do
-      ! field band caches are view-dependent (mass/radius interfaces), so
-      ! drop and re-size them to the current registry on every invalidation
-      if (allocated(fcache)) deallocate (fcache)
-      if (nfields > 0) allocate (fcache(2, nfields))
-   end subroutine cache_invalidate
 
    subroutine draw_bandset(bs)
       type(bandset_t), intent(in) :: bs
@@ -1341,126 +1211,6 @@ contains
       allocate (epx(need), epy(need))
    end subroutine ensure_scratch
 
-   !---------------------------------------------------------------------
-   ! Energy-generation field (epsnuc).  Maps the `color` field name to a
-   ! cnv layer; -1 means "convection types" (no energy overlay).
-   !   epsnuc|enuc|nuc -> nuclear energy generation (signed: +gain/-loss)
-   !   nuk|loss        -> nuclear energy loss layer
-   !   neu|neutrino    -> neutrino layer
-   pure function layer_of_cfield() result(layer)
-      integer(int32) :: layer
-      select case (trim(st%cfield))
-      case ('epsnuc', 'enuc', 'nuc'); layer = 0
-      case ('nuk', 'loss'); layer = 1
-      case ('neu', 'neutrino'); layer = 2
-      case default; layer = -1
-      end select
-   end function layer_of_cfield
-
-   ! resolve st%cfield to a registered colour-field index (1..nfields), or 0.
-   ! matches the source column name exactly first, then a few friendly
-   ! aliases against the canonical names the readers emit.
-   pure function field_of_cfield() result(f)
-      integer(int32) :: f, k
-      character(len=len(st%cfield)) :: want
-      f = 0
-      if (.not. allocated(field_names)) return
-      want = trim(st%cfield)
-      do k = 1, nfields
-         if (trim(field_names(k)) == want) then
-            f = k
-            return
-         end if
-      end do
-      ! aliases: try each canonical name a group maps to, first present wins
-      select case (want)
-      case ('temperature', 'temp', 'T')
-         f = first_field(['T_K   ', 'logT  ', 'T     '])
-      case ('density', 'rho', 'Rho')
-         f = first_field(['rho_gcc', 'logRho ', 'rho    '])
-      case ('luminosity', 'lum', 'L')
-         f = first_field(['L_erg_s   ', 'logL      ', 'luminosity'])
-      case ('pressure', 'P')
-         f = first_field(['logP    ', 'pressure'])
-      end select
-   end function field_of_cfield
-
-   ! index of the first of the given canonical names that is registered, or 0
-   pure function first_field(names) result(f)
-      character(len=*), intent(in) :: names(:)
-      integer(int32) :: f, i, k
-      f = 0
-      if (.not. allocated(field_names)) return
-      do i = 1, size(names)
-         do k = 1, nfields
-            if (trim(field_names(k)) == trim(names(i))) then
-               f = k
-               return
-            end if
-         end do
-      end do
-   end function first_field
-
-   ! number of step-function entries in a model's field-f layer
-   pure function field_layer_len(i, f) result(n)
-      integer(int32), intent(in) :: i, f
-      integer(int32) :: n
-      n = 0
-      if (f < 1 .or. f > data(i)%nfld) return
-      n = data(i)%fld(fscale(), f)%n
-   end function field_layer_len
-
-   ! fld/fcache scale index of the selected colour field: 1 default, 2 flipped
-   pure integer(int32) function fscale()
-      fscale = merge(2_int32, 1_int32, st%cflip)
-   end function fscale
-
-   ! copy a model's field-f (level, coord-index) step function into buffers,
-   ! parallel to get_layer_buf for the energy layers
-   subroutine get_field_buf(i, f, vals, idxs, n)
-      integer(int32), intent(in)  :: i, f
-      integer(int32), intent(out) :: vals(:), idxs(:)
-      integer(int32), intent(out) :: n
-      n = field_layer_len(i, f)
-      if (n > 0) then
-         vals(1:n) = int(data(i)%fld(fscale(), f)%lev, int32)
-         idxs(1:n) = int(data(i)%fld(fscale(), f)%idx, int32)
-      end if
-   end subroutine get_field_buf
-
-   ! Trace every contour bin of field f into a nested bandset (bin 1 covers the
-   ! whole star, each higher bin nests inward), reusing the energy band tracer.
-   subroutine build_field_cache(f)
-      integer(int32), intent(in) :: f
-      type(tracer_t) :: tr
-      integer(int32) :: i, n, lev, maxn, m
-      integer(int32), allocatable :: lvals(:), lidxs(:)
-      real(real64), allocatable   :: ivlo(:), ivhi(:)
-      associate (fc => fcache(fscale(), f))
-         if (allocated(fc%band)) deallocate (fc%band)
-         fc%nlev = FIELD_NBINS
-         allocate (fc%band(fc%nlev))
-         maxn = 1
-         do i = 1, nmodels
-            maxn = max(maxn, field_layer_len(i, f))
-         end do
-         call tracer_alloc(tr, 64_int32, nmodels)
-         allocate (lvals(maxn), lidxs(maxn), ivlo(maxn + 1), ivhi(maxn + 1))
-         do lev = 1, fc%nlev
-            call tracer_reset(tr)
-            do i = 1, nmodels
-               call get_field_buf(i, f, lvals, lidxs, n)
-               call level_intervals(i, lvals, lidxs, n, lev, ivlo, ivhi, m)
-               call tracer_step(tr, fc%band(lev), i, ivlo, ivhi, m)
-            end do
-            call tracer_flush(tr, fc%band(lev))
-         end do
-         deallocate (lvals, lidxs, ivlo, ivhi)
-         call tracer_dealloc(tr)
-         fc%valid = .true.
-      end associate
-   end subroutine build_field_cache
-
    ! Generic colour field: fill each contour bin as nested solid bands shaded
    ! by the colormap, coolest bin (1) first so hotter bins overpaint inward.
    subroutine draw_field(f)
@@ -1596,112 +1346,6 @@ contains
       end do
    end subroutine kipp_list_cmaps
 
-   ! copy a model's level-value / coordinate-index arrays for a layer
-   subroutine get_layer(i, layer, vals, idxs, n)
-      integer(int32), intent(in)  :: i, layer
-      integer(int32), allocatable, intent(out) :: vals(:), idxs(:)
-      integer(int32), intent(out) :: n
-      select case (layer)
-      case (0); n = data(i)%nnuc
-      case (1); n = data(i)%nnuk
-      case (2); n = data(i)%nneu
-      case default; n = 0
-      end select
-      allocate (vals(n), idxs(n))
-      if (n > 0) then
-         select case (layer)
-         case (0); vals = int(data(i)%nuc, int32); idxs = int(data(i)%inuc, int32)
-         case (1); vals = int(data(i)%nuk, int32); idxs = int(data(i)%inuk, int32)
-         case (2); vals = int(data(i)%neu, int32); idxs = int(data(i)%ineu, int32)
-         end select
-      end if
-   end subroutine get_layer
-
-   ! number of levels in a model's layer (for scratch sizing)
-   pure function layer_len(i, layer) result(n)
-      integer(int32), intent(in) :: i, layer
-      integer(int32) :: n
-      select case (layer)
-      case (0); n = int(data(i)%nnuc, int32)
-      case (1); n = int(data(i)%nnuk, int32)
-      case (2); n = int(data(i)%nneu, int32)
-      case default; n = 0
-      end select
-   end function layer_len
-
-   ! like get_layer but writes into caller-supplied buffers (no allocation),
-   ! so the per-(model,level) inner loops in draw_energy stay alloc-free
-   subroutine get_layer_buf(i, layer, vals, idxs, n)
-      integer(int32), intent(in)  :: i, layer
-      integer(int32), intent(out) :: vals(:), idxs(:)
-      integer(int32), intent(out) :: n
-      n = layer_len(i, layer)
-      if (n > 0) then
-         select case (layer)
-         case (0); vals(1:n) = int(data(i)%nuc, int32); idxs(1:n) = int(data(i)%inuc, int32)
-         case (1); vals(1:n) = int(data(i)%nuk, int32); idxs(1:n) = int(data(i)%inuk, int32)
-         case (2); vals(1:n) = int(data(i)%neu, int32); idxs(1:n) = int(data(i)%ineu, int32)
-         case default; stop "impossible case hit"
-         end select
-      end if
-   end subroutine get_layer_buf
-
-   ! max gain (positive) and loss (|negative|) levels across all models
-   subroutine scan_levels(layer, gmax, lmax)
-      integer(int32), intent(in)  :: layer
-      integer(int32), intent(out) :: gmax, lmax
-      integer(int32) :: i, n, k
-      integer(int32), allocatable :: vals(:), idxs(:)
-      gmax = 0; lmax = 0
-      do i = 1, nmodels
-         call get_layer(i, layer, vals, idxs, n)
-         do k = 1, n
-            gmax = max(gmax, vals(k))
-            lmax = max(lmax, -vals(k))
-         end do
-         deallocate (vals, idxs)
-      end do
-   end subroutine scan_levels
-
-   ! Mass intervals of one model where the layer field reaches integer level L.
-   ! Returns m intervals in
-   ! ivlo/ivhi (cgs coords) instead of drawing, so the band tracer can fill
-   ! them as polygons.
-   subroutine level_intervals(i, vals, idxs, n, L, ivlo, ivhi, m)
-      integer(int32), intent(in)  :: i, n, L
-      integer(int32), intent(in)  :: vals(:), idxs(:)
-      real(real64), intent(out) :: ivlo(:), ivhi(:)
-      integer(int32), intent(out) :: m
-      integer(int32) :: pf, xprev, xcur
-      logical :: rising, falling, inb
-      real(real64) :: ylo
-      m = 0; inb = .false.; ylo = 0.d0
-      do pf = 1, n
-         if (pf == 1) then
-            xprev = 0
-         else
-            xprev = vals(pf - 1)
-         end if
-         xcur = vals(pf)
-         if (L > 0) then
-            rising = (xprev < L .and. xcur >= L)
-            falling = (xprev >= L .and. xcur < L)
-         else
-            rising = (xprev > L .and. xcur <= L)
-            falling = (xprev <= L .and. xcur > L)
-         end if
-         if (rising) then
-            ylo = coord_at(i, idxs(pf)); inb = .true.
-         else if (falling .and. inb) then
-            m = m + 1; ivlo(m) = ylo; ivhi(m) = coord_at(i, idxs(pf))
-            inb = .false.
-         end if
-      end do
-      if (inb) then
-         m = m + 1; ivlo(m) = ylo; ivhi(m) = coord_at(i, data(i)%ncoord)
-      end if
-   end subroutine level_intervals
-
    ! Energy field: each integer contour level becomes a set of nested filled
    ! polygons (via the cached band tracer), the same way convection zones are
    ! traced -- one polygon per contiguous run of models, not per model.
@@ -1730,48 +1374,6 @@ contains
          end do
       end associate
    end subroutine draw_energy
-
-   ! Trace every gain/loss contour level of a layer into its band cache.
-   subroutine build_energy_cache(layer)
-      integer(int32), intent(in) :: layer
-      type(tracer_t) :: tr
-      integer(int32) :: i, n, lev, maxn, m
-      integer(int32), allocatable :: lvals(:), lidxs(:)
-      real(real64), allocatable   :: ivlo(:), ivhi(:)
-      associate (ec => ecache(layer))
-         if (allocated(ec%gain)) deallocate (ec%gain)
-         if (allocated(ec%loss)) deallocate (ec%loss)
-         call scan_levels(layer, ec%gmax, ec%lmax)
-         allocate (ec%gain(ec%gmax), ec%loss(ec%lmax))
-         maxn = 1
-         do i = 1, nmodels
-            maxn = max(maxn, layer_len(i, layer))
-         end do
-         call tracer_alloc(tr, 64_int32, nmodels)
-         allocate (lvals(maxn), lidxs(maxn), ivlo(maxn + 1), ivhi(maxn + 1))
-         do lev = 1, ec%lmax
-            call tracer_reset(tr)
-            do i = 1, nmodels
-               call get_layer_buf(i, layer, lvals, lidxs, n)
-               call level_intervals(i, lvals, lidxs, n, -lev, ivlo, ivhi, m)
-               call tracer_step(tr, ec%loss(lev), i, ivlo, ivhi, m)
-            end do
-            call tracer_flush(tr, ec%loss(lev))
-         end do
-         do lev = 1, ec%gmax
-            call tracer_reset(tr)
-            do i = 1, nmodels
-               call get_layer_buf(i, layer, lvals, lidxs, n)
-               call level_intervals(i, lvals, lidxs, n, lev, ivlo, ivhi, m)
-               call tracer_step(tr, ec%gain(lev), i, ivlo, ivhi, m)
-            end do
-            call tracer_flush(tr, ec%gain(lev))
-         end do
-         deallocate (lvals, lidxs, ivlo, ivhi)
-         call tracer_dealloc(tr)
-         ec%valid = .true.
-      end associate
-   end subroutine build_energy_cache
 
    ! Surface line, clipped to the visible models (one extra point each
    ! side so the line still crosses the window edge).
