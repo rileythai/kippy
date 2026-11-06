@@ -21,12 +21,14 @@ module layers
    !! Data layer lookup and the band caches traced from it.
    !!
    !! A "layer" is one per-model quantity that is traced into bands.
-   !! Convection types come from the zone list `yzip` of each model.
-   !! Energy layers are step functions of signed integer contour levels,
-   !! positive for gain and negative for loss.
-   !! Layer 0 is nuclear energy generation, 1 nuclear energy loss, 2 neutrinos.
-   !! Colour fields are columns binned into `FIELD_NBINS` levels, registered by the readers in convdata.f90.
+   !! - Convection types come from the zone list `yzip` of each model.
+   !! - Energy layers are step functions of signed integer contour levels,
+   !!   positive for gain and negative for loss.
+   !!   - Layer 0 is nuclear energy generation, 1 nuclear energy loss, 2 neutrinos.
+   !! - Colour fields are columns binned into `FIELD_NBINS` levels, registered by
+   !!   the readers in convdata.f90.
    !!
+   !! Some notes on functions:
    !! - `layer_of_cfield` and `field_of_cfield` resolve the `color` selection `st%cfield`.
    !! - `get_layer` and `get_field_buf` copy a model's step function.
    !! - `level_intervals` turns one contour level of a step function into mass or radius intervals.
@@ -36,7 +38,7 @@ module layers
    !!
    !! kipp.f90 draws the caches, reads the lookups for the colorbars and `print_cell`,
    !! and calls `cache_invalidate` on file load and axis rebuild.
-   !! This module holds the caches.
+   !! This module holds the caches used by the `kipp` module.
 
    use typedef, only: int32, real64
    use convdata, only: data, FIELD_NBINS, nfields, field_names, RADIATIVE, NEUTRAL, OVERSHOOT, &
