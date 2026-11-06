@@ -18,7 +18,7 @@ run = "uvx --from 'zensical>=0.0.68' zensical build"
 
 [tasks."docs:fortran"]
 description = "build the fortran api docs with ford into docs/fortran, which zensical copies to site/fortran"
-run = "uvx --from 'ford>=7.0.13' ford tools/ford.md"
+run = ["uvx --from 'ford>=7.0.13' ford tools/ford.md", "sh tools/ford_backlink.sh docs/fortran"]
 
 [tasks.doccheck]
 description = "fail on fortran modules, procedures, arguments or module variables without a ford !! docstring"
