@@ -18,20 +18,22 @@
 
 ! bands.f90 -- band tracer and region outlines of the kipp renderer
 module bands
-   !! Traced bands and region outlines in data coordinates, with no drawing.
+   !! Traced bands and region outlines datatypes and methods.
    !!
    !! - `tracer_t` and the `tracer_*` routines turn per-model intervals of
    !!   one feature into bands, stored in a `bandset_t`.
    !! - `seg_append`, `symdiff_append` and `build_chains` build the outline
    !!   of a region as a `chainset_t` of polylines.
    !!
-   !! Outline segments live on the strip-edge grid: a segment is
-   !! `(e0, y0)-(e1, y1)` with either `e0 == e1` (vertical, at strip edge
-   !! `e0`) or `y0 == y1` and `e1 == e0 + 1` (a horizontal interface).
+   !! Outline segments live on a "strip-edge" grid, where distinct
+   !! vertical/horizontal segments are defined via the edge coordinates
+   !! relative to vertical segmentation of model strips, i.e.:
+   !! `(e0, y0)-(e1, y1)`. `e0 == e1` is vertical at strip edge
+   !! `e0`. `y0 == y1 && e1 == e0 + 1` is horizontal across a time boundary.
    !!
-   !! The kipp cache builders fill the band and chain sets; the draw
-   !! routines read them. `build_chains` reads `nmodels` from `kipp_state`.
-   !! The module holds no state of its own.
+   !! The cache builders fill the band and chainsets. These are later used
+   !! by the draw routines (draw.f90). `build_chains` reads `nmodels` from `kipp_state`.
+   !! This module holds no state.
 
    use typedef, only: int32, real64
    use kipp_state, only: nmodels
@@ -43,13 +45,13 @@ module bands
              tracer_alloc, tracer_dealloc, tracer_reset, tracer_step, tracer_flush, &
              bandset_clear, seg_append, symdiff_append, build_chains, chainset_clear
 
-   ! i think this is really sick so read below
-
    type :: tracer_t
-      !! Greedy band tracer. Turns per-model `(ylo, yhi)` intervals of one
+      !! Greedy band tracer.
+      !!
+      !! Turns per-model `(ylo, yhi)` intervals of one
       !! feature (a convection type, or one energy contour level) into a
-      !! small number of bands spanning contiguous runs of models. Closed
-      !! bands are stored into a `bandset_t` cache.
+      !! small number of bands spanning contiguous runs of models.
+      !! Closed bands are stored into a `bandset_t` cache.
       integer(int32) :: maxbands = 0
          !! Number of band slots.
       integer(int32), allocatable :: i0(:), i1(:)
@@ -61,10 +63,12 @@ module bands
    end type tracer_t
 
    type :: band_t
-      !! One traced band in data coordinates: a model range on x, cgs mass
-      !! or radius interfaces on y. View-independent: zoom, pan and units
-      !! only change the transforms applied at emit time, so bands are
-      !! cached across renders and a redraw only pays the polygon fill cost.
+      !! One traced band in data coordinates.
+      !!
+      !! This is a model range on x, cgs mass or radius interfaces on y.
+      !! Designed to be view-independent so zoom, pan and units
+      !! only change on transforms.
+      !! Bands are cached across renders so redraws only cost a polygon fill.
       integer(int32) :: i0 = 0, i1 = 0
          !! First and last model of the band.
       real(real64), allocatable :: ylo(:), yhi(:)
@@ -76,12 +80,13 @@ module bands
       integer(int32) :: nb = 0
          !! Number of bands stored.
       type(band_t), allocatable :: b(:)
-         !! The bands, `b(1:nb)`; the capacity doubles when full.
+         !! The bands, `b(1:nb)`; extended with array doubling.
    end type bandset_t
 
    type :: chain_t
-      !! One outline polyline along a region boundary, in data coordinates:
-      !! x is a strip-edge index into `xedge`, y a cgs mass or radius.
+      !! One outline polyline along a region boundary.
+      !!
+      !! In data coordinates: x is a strip-edge index into `xedge`, y a cgs mass or radius.
       integer(int32) :: n = 0
          !! Number of points.
       integer(int32), allocatable :: ei(:)
@@ -95,7 +100,7 @@ module bands
       integer(int32) :: nc = 0
          !! Number of chains stored.
       type(chain_t), allocatable :: c(:)
-         !! The chains, `c(1:nc)`; the capacity doubles when full.
+         !! The chains, `c(1:nc)`; extended with array doubling.
    end type chainset_t
 
 contains
@@ -137,8 +142,9 @@ contains
 
    subroutine tracer_step(tr, bs, i, ivlo, ivhi, m)
       !! Feed model `i`'s intervals (`ivlo`/`ivhi`, `m` of them, ascending
-      !! in y). Each interval is matched to an open band from model `i - 1`
-      !! by overlap; unmatched intervals open new bands; bands with no
+      !! in y).
+      !! Each interval is matched to an open band from model `i - 1`
+      !! by overlap; unmatched intervals open new ones; bands with no
       !! continuation are stored to `bs`.
       ! Arguments
       type(tracer_t), intent(inout) :: tr
@@ -273,11 +279,11 @@ contains
 
    subroutine symdiff_append(alo, ahi, na, blo, bhi, nb, e, bp, &
                              se0, se1, sy0, sy1, ns)
-      !! Append the vertical outline segments at strip edge `e`: the spans
-      !! of y covered by exactly one of the two adjacent models' interval
-      !! sets. All values are exact copies of the `mbound` reals, so every
-      !! elementary span between sorted breakpoints is either fully inside
-      !! or fully outside each interval and the membership tests are exact.
+      !! Append the vertical outline segments at strip edge `e`.
+      !!
+      !! Spans of y covered by exactly one of the two adjacent models' interval
+      !! sets.
+      !! All values are exact copies of the `mbound` reals to give exact membership tests.
       ! Arguments
       real(real64), intent(in)    :: alo(:), ahi(:), blo(:), bhi(:)
          !! Intervals of the models left (`a`) and right (`b`) of the edge.
@@ -350,9 +356,9 @@ contains
 
    subroutine build_chains(cs, se0, se1, sy0, sy1, ns)
       !! Link the outline segments into polyline chains by walking shared
-      !! endpoints (exact equality; see `symdiff_append`). Where more than
-      !! two segments meet, the walker picks any continuation: every segment
-      !! is drawn exactly once either way.
+      !! endpoints (exact equality; see `symdiff_append`).
+      !! Where more than two segments meet, the walker picks any
+      !! continuation: every segment is drawn exactly once either way.
       ! Arguments
       type(chainset_t), intent(inout) :: cs
          !! Receives the chains.
