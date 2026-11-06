@@ -37,7 +37,8 @@ module layers
    !! - `cache_invalidate` drops every cache.
    !!
    !! draw.f90 draws the caches and reads the colour field lookups.
-   !! kipp.f90 reads the lookups for `print_cell` and calls `cache_invalidate` on file load and axis rebuild.
+   !! cursor.f90 reads the lookups for `print_cell`.
+   !! kipp.f90 calls `cache_invalidate` on file load and axis rebuild.
    !! axes.f90 reads the energy caches and `level_mins` for the energy colorbar.
    !! This module holds the caches used by the `draw` module.
 

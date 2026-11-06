@@ -36,7 +36,8 @@ module coords
    !! A logarithmic axis gives their log10.
    !!
    !! draw.f90 uses the transforms and sets `xoff` on each render.
-   !! kipp.f90 uses them for the cursor keys and `print_cell`, and rebuilds the axes on load and REPL changes.
+   !! cursor.f90 uses them for the cursor keys and `print_cell`.
+   !! kipp.f90 rebuilds the axes on load and REPL changes.
    !! This module holds only `xoff`.
 
    use typedef, only: int32, real64

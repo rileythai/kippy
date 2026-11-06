@@ -33,7 +33,7 @@ module draw
    !! `draw_scene` sets both on each render.
    !!
    !! kipp.f90 re-exports the four device routines.
-   !! Its cursor keys call `kipp_render` and `kipp_save`.
+   !! The cursor keys of cursor.f90 call `kipp_render` and `kipp_save`.
    !! This module writes the device fields and view limits of `st`, `chs` of kipp_state.f90 and `xoff` of coords.f90.
    !! It holds the per-render state: the clamp box, the visible range, the time offset label and the scratch.
 
