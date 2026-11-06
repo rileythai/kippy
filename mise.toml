@@ -6,6 +6,13 @@ run = "uv sync --reinstall-package kippy"
 description = "render a synthetic .kipp headless with the installed kippy"
 run = "env -u DISPLAY uv run tools/smoke_test.py"
 
+[tasks.test]
+description = "run the fortran unit tests with meson test in the editable build dir"
+run = '''
+tag=$(uv run python -c "import sys; print('cp%d%d' % sys.version_info[:2])")
+uv run meson test -C "build/$tag" --print-errorlogs
+'''
+
 [tasks."docs:serve"]
 description = "preview the docs site locally"
 depends = ["docs:fortran"]

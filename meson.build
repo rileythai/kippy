@@ -31,3 +31,4 @@ project(
 py = import('python').find_installation(pure: false)
 
 subdir('src/kippy')
+subdir('tests/fortran')
