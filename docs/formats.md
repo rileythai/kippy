@@ -1,10 +1,11 @@
 # Input formats
 
-`kippy` chooses a reader from the supplied path. The checks are ordered: a
-basename beginning with `seq.` or ending with `.seq` selects MONASH, a path
-ending with `.kipp` selects the raw stream reader, and a path for which
-`<path>/profiles.index` exists selects MESA. Every other path is passed to the
-KEPLER convection reader; the `.cnv` suffix itself is not checked.
+`kippy` chooses a reader from the given path. The checks are ordered as: 
+
+1. a basename beginning with `seq.` or ending with `.seq` selects MONASH readers.
+2. a path ending with `.kipp` selects `.kipp` readers.
+3. path where `<path>/profiles.index` exists selects MESA ASCII profile readers.
+4. all other paths use KEPLER convection reader; does not check for `.cnv` suffix.
 
 !!! tip
     `kippy` works best when you output _every single model_ for plotting. This 
@@ -15,9 +16,9 @@ KEPLER convection reader; the `.cnv` suffix itself is not checked.
 | Format | Detected from the path | Convection source | Energy or epsnuc source | Colour fields available |
 | --- | --- | --- | --- | --- |
 | KEPLER-style `.cnv` | Fallback after the other checks | Native `yzip` and `iconv` zone records | Native nuclear, neutrino, and related energy layers | No generic source-column fields |
-| Raw `.kipp` stream | Path ends with `.kipp` | The stream's mixing column | One eps column supplies the net energy layer | Every named non-structural column in the `.hdr` sidecar |
-| MESA profiles directory | `<path>/profiles.index` exists | `mixing_type` | `eps_nuc`; `eps_nuc_neu_total` supplies the neutrino layer | `logT`, `logRho`, `logL`, `luminosity`, `logP`, `pressure`, `opacity`, `entropy`, and `velocity`, when present |
-| MONASH `seq` | Basename begins with `seq.` or ends with `.seq` | `kcvtn` | Approximate epsnuc from `dL/dm` | Temperature, density, pressure, luminosity, and seven reaction rates |
+| Raw `.kipp` stream | Path ends with `.kipp` | The stream's mixing column | One eps column for net energy layer | Every named non-structural column in the `.hdr` sidecar |
+| MESA profiles directory | `<path>/profiles.index` exists | `mixing_type` | `eps_nuc`; `eps_nuc_neu_total` for neutrino layer | `logT`, `logRho`, `logL`, `luminosity`, `logP`, `pressure`, `opacity`, `entropy`, and `velocity`, when present |
+| MONASH `seq` | Basename begins with `seq.` or ends with `.seq` | `kcvtn` | Approximated epsnuc from `dL/dm` | Temperature, density, pressure, luminosity, internal energy, convective velocity, seven reaction rates and seven mass fractions |
 
 !!! note
     The MONASH stellar evolution code and KEPLER are both closed-source codes.
@@ -28,7 +29,7 @@ The `.cnv` reader uses the convection zones, mass and radius coordinates,
 and energy layers stored directly in the sequential unformatted [`.cnv` file format](cnvfiles.md).
 These records provide compact representations for nuclear and neutrino loss bands used by the
 plotting routines. The reader does not register generic source columns as selectable colour
-fields.
+fields due to the strict file format.
 
 The Fortran reader supports record versions 10600 through 10699 and record
 versions 10700 and later. Versions below 10600, including 10400 and 10500, are
@@ -78,9 +79,10 @@ described in [`.kipp` files](kippfiles.md#file-format).
 
 !!! note
     For `kipp` files, the reader will stream the data twice. 
-    At the first pass builds coordinates, convection, and energy bands 
-    while finding the run-wide range of each generic colour
-    field. The second pass then quantizes color fields. This is done to keep
+    At the first pass, builds coordinates, convection, and energy bands 
+    while finding the run-wide range for each generic colour
+    field. 
+    The second pass then quantizes color fields. This is done to keep
     the full run out of memory. 
 
 
@@ -88,29 +90,59 @@ described in [`.kipp` files](kippfiles.md#file-format).
 
 The MONASH `seq` reader expects a gfortran sequential-unformatted file with one
 record per model. Mass coordinates are reconstructed from the mass coordinate `omx` as
-`mass * (1 - omx)^3`; cells are ordered from centre to surface.
+`mass * (1 - omx)^3`; cells are ordered from centre to surface (inside-out).
 Convection zones come from the `kcvtn` flag.
 
-The epsnuc layer is approximated from the luminosity change per mass shell,
-`dL/dm`. Note that this is not a pure nuclear energy-generation rate because the
-luminosity difference also includes the gravothermal terms.
+Each record holds, in order:
+
+| Field | Type | Count | Meaning |
+| --- | --- | --- | --- |
+| `ncurrent` | `i4` | 1 | Model number |
+| `time` | `f8` | 1 | Age (s) |
+| `tint` | `f8` | 1 | Time step that reached this model (s) |
+| `tintn` | `f8` | 1 | Next time step (s) |
+| `mass` | `f8` | 1 | Total mass (g) |
+| `lolsun` | `f8` | 1 | Surface luminosity (Lsun) |
+| `ltc`, `lpc` | `f8` | 2 | Central `ln T`, `ln P` |
+| `ltca`, `lpca` | `f8` | 2 | Central `ln T`, `ln P` of the previous model |
+| `npts` | `i4` | 1 | Number of cells |
+
+then, for each of the `npts` cells:
+
+| Field | Type | Count | Meaning |
+| --- | --- | --- | --- |
+| `omx` | `f8` | 1 | Mass coordinate, `m = mass * (1 - omx)^3` |
+| `dx` | `f4` | 1 | `omx` step to the next cell |
+| `kcvtn` | `i2` | 1 | Convection code |
+| `up` | `f8` | 1 | Internal energy per gram |
+| `rhop` | `f8` | 1 | Density |
+| `vconvp` | `f4` | 1 | Convective velocity |
+| `f`, `fa` | `f8` | 4 pairs | Steps across the cell of luminosity (Lsun), `ln T`, radius (Rsun) and `ln P`; `fa` for the previous model |
+| `w`, `wd` | `f4` | 7 pairs | Mass fractions and reaction rates of H, He3, He4, C, N, O and other |
+
+kippy reads every field but does not use `tintn`, `lolsun`, `ltca`, `lpca`, `dx` and `fa`.
+
+Because it does not save, we approximate the epsnuc layer from the luminosity change per mass shell,
+`dL/dm`. Note that this is __not__ a nuclear energy-generation rate because the
+luminosity difference will also include gravothermal terms.
 
 The registered colour fields are `Temperature`, `Density`, `Pressure`,
 `Luminosity`, `H_reaction_rate`, `He3_reaction_rate`, `He4_reaction_rate`,
-`C_reaction_rate`, `N_reaction_rate`, `O_reaction_rate`, and
-`Other_reaction_rate`. These names are case-sensitive.
+`C_reaction_rate`, `N_reaction_rate`, `O_reaction_rate`,
+`Other_reaction_rate`, `Internal_energy`, `Convective_velocity`, `X_H`,
+`X_He3`, `X_He4`, `X_C`, `X_N`, `X_O`, and `X_Other`. These names are
+__case-sensitive__.
 
 !!! note
     Like the `.kipp` reader, the MONASH  `.seq` reader uses one pass 
-    to find field ranges and a second pass
-    to build the quantized field layers.
+    to find field ranges and a second pass to build the quantized field layers.
 
 ## Colour fields
 
 Use `color <column>` to select a registered non-structural column. See [the usage documentation](usage.md) for more details. 
 Note that with each file format, color fields are loaded differently:
 
-- The `.kipp` reader registers every named non-structural source column.
+- The `.kipp` reader registers every named non-structural source column given in the header.
 - the MESA profiles and MONASH readers only register the curated fields listed above.
 - KEPLER-style `.cnv` files do not load any non-structural sources.
 
@@ -129,14 +161,14 @@ Some other notes:
 
 ### Unit recognition
 
-The colorbar title is fetched from the column name with its unit in brackets. The unit is
-either the one a `.kipp` header states for the column, or else a unit suffix on the
+The colorbar title is determined from the column name and displayed with a derived unit in brackets. 
+The unit is either given by a `.kipp` header entry, or else a unit suffix on the
 name, e.g., `_K`, `_g`, `_cm`, `_s`, `_yr`, `_gcc` (g/cm^3), `_erg_s` (erg/s) or
 `_erg_g_s` (erg/g/s).
 
-Units are written with negative exponents, so `g/cm^3`, `g/cm3` and `gcc` all show as
+Units are written with negative exponents, so `g/cm^3`, `g/cm3` and `gcc` will all show as
 $g cm^{-3}$. Underscores in a name show as spaces, and a name that is a Greek
-letter, such as `rho` or `kappa`, shows as the letter: e.g., `rho_gcc` is titled
+letter, such as `rho` or `kappa`, will show as the letter: e.g., `rho_gcc` is titled
 $\log \rho\quad {\rm g cm^{-3}}$
 
 A unit that is not of the form `a/b^n/c` is shown as written.

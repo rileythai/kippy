@@ -74,7 +74,9 @@ reader_lib = static_library(
 # --- kippenhahn plotting core (needs giza.mod first) ---
 kipp_lib = static_library(
   'kipp',
-  files('fortran/cmaps.f90', 'fortran/kipp.f90'),
+  files('fortran/cmaps.f90', 'fortran/kipp_state.f90', 'fortran/bands.f90', 'fortran/coords.f90',
+        'fortran/layers.f90', 'fortran/axes.f90', 'fortran/draw.f90', 'fortran/cursor.f90',
+        'fortran/kipp.f90'),
   sources: [giza_mod],
   fortran_args: fflags,
   link_with: reader_lib,

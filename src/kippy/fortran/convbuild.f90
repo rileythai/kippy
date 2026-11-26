@@ -16,14 +16,13 @@
 ! You should have received a copy of the GNU Lesser General Public
 ! License along with kippy. If not, see <https://www.gnu.org/licenses/>.
 
+! convbuild.f90 -- record builders shared by the profile readers
 module convbuild
-
-   ! reader-agnostic record builders shared by the mesa/.kipp reader
-   ! (mesaload) and the monash seq reader (monload): energy/field
-   ! quantization, the colour-field registry, zone run-length compression,
-   ! and the shared physical constants (from units).  depends only on
-   ! convdata, typedef and units so either reader can use it without a
-   ! module cycle.
+   !! Record builders shared by profile readers (mesaload.f90, monload.f90).
+   !!
+   !! Energy and field quantization, colour-field registry, zone run-length compression; re-exports
+   !! units.f90 constants. Depends only on convdata, typedef and units, so either reader uses it w/o
+   !! a module cycle.
 
    use typedef, only: &
       int32, real64
@@ -43,18 +42,28 @@ module convbuild
    public :: alloc_empty_layers
 
    real(real64), parameter :: GROW_FAC = 0.5d0*(sqrt(5.d0) + 1.d0)
+      !! Growth factor of a reader's full record array, golden ratio.
    integer(int32), parameter :: EPS_BASE = 1
+      !! Energy level floor, `log10` of erg/g/s.
+      !!
+      !! `level_of` maps it to level 1; readers store it as a record's first six level floors.
    integer(int32), parameter :: REC_NVERS = 10600
+      !! Record version readers build.
 
 contains
 
-   ! run-length compress a per-cell zone-type char array (already mapped from
-   ! each reader's own integer codes) into yzip type chars + iconv outer
-   ! boundary indices; radiative runs are included so zones tile the whole star.
    subroutine build_zones(zones, nz, cnv)
+      !! Run-length compress cell zone types into `yzip` and `iconv`.
+      !!
+      !! Each run of equal types is one zone, `iconv` its outer cell index. Radiative runs included,
+      !! so zones tile whole star ("Convection zones", docs/cnvfiles.md).
+      ! Arguments
       character(len=1), intent(in) :: zones(:)
+         !! `ZONE_CHAR` type of each cell, centre to surface, already mapped from reader's codes.
       integer(int32), intent(in) :: nz
+         !! Number of cells.
       type(convtype), intent(inout) :: cnv
+         !! Record receiving `nconv`, `yzip`, `iconv`.
       integer(int32) :: k, nconv
       character(len=1), allocatable :: yz(:)
       integer(int32), allocatable :: ic(:)
@@ -80,16 +89,22 @@ contains
       deallocate (yz, ic)
    end subroutine build_zones
 
-   ! quantize a per-cell energy field (erg/g/s, ascending center->surface)
-   ! into the integer level step function kipp draw_energy consumes: a
-   ! (level, coordinate-index) pair at every cell where the level changes.
-   ! sign is +gain / -loss; cells below the EPS_BASE floor map to level 0.
    subroutine build_energy(f, nz, n, vals, idxs)
+      !! Quantize per-cell energy rate into energy-layer step function.
+      !!
+      !! Stores a (level, coordinate index) pair at each level change, levels from `level_of`
+      !! ("Energy layers", docs/cnvfiles.md).
+      ! Arguments
       real(real64), intent(in) :: f(:)
+         !! Energy rate of each cell (erg/g/s), centre to surface.
       integer(int32), intent(in) :: nz
+         !! Number of cells.
       integer(int32), intent(out) :: n
+         !! Number of pairs.
       integer(nuc_kind), allocatable, intent(out) :: vals(:)
+         !! Level of each pair.
       integer(idx_kind), allocatable, intent(out) :: idxs(:)
+         !! Coordinate index where each pair starts.
       integer(int32) :: k, lev, prev
       integer(int32), allocatable :: lv(:), ix(:)
 
@@ -114,10 +129,13 @@ contains
       deallocate (lv, ix)
    end subroutine build_energy
 
-   ! signed integer contour level of an energy value: nint(log10|f|) shifted
-   ! so EPS_BASE is level 1, negative for losses, 0 below the floor
    pure function level_of(f) result(lev)
+      !! Return signed integer contour level of energy rate.
+      !!
+      !! `nint(log10|f|)` shifted so `EPS_BASE` is level 1; negative for losses, 0 below floor.
+      ! Arguments
       real(real64), intent(in) :: f
+         !! Energy rate (erg/g/s).
       integer(int32) :: lev
       real(real64) :: a
 
@@ -134,10 +152,13 @@ contains
       end if
    end function level_of
 
-   ! (re)allocate the shared colour-field registry for nf fields, with ranges
-   ! reset to be grown by update_field_range.
    subroutine reset_field_registry(nf)
+      !! Allocate convdata.f90 colour-field registry for `nf` fields.
+      !!
+      !! Names and units blank, ranges empty until widened by `update_field_range`.
+      ! Arguments
       integer(int32), intent(in) :: nf
+         !! Number of fields.
 
       if (allocated(field_names)) deallocate (field_names)
       if (allocated(field_vmin)) deallocate (field_vmin)
@@ -159,10 +180,15 @@ contains
       end if
    end subroutine reset_field_registry
 
-   ! widen field f's running [vmin, vmax] with one finite sample
    subroutine update_field_range(f, v)
+      !! Widen running range of field `f` w/ one sample.
+      !!
+      !! Skips NaN and infinite samples; positive samples also lower `field_vpos`.
+      ! Arguments
       integer(int32), intent(in) :: f
+         !! Field index in registry.
       real(real64), intent(in) :: v
+         !! Sample value.
 
       if (v /= v) return                 ! skip NaN
       if (abs(v) > huge(1.d0)) return     ! skip +/-Inf
@@ -171,10 +197,14 @@ contains
       if (v > 0.d0 .and. v < field_vpos(f)) field_vpos(f) = v
    end subroutine update_field_range
 
-   ! choose log binning for a field whose range is strictly positive and spans
-   ! more than two decades (temperature, density, luminosity); linear otherwise
    subroutine finalize_field_log(f)
+      !! Choose default binning of field `f` once its range is known.
+      !!
+      !! Log if range is strictly positive and spans over two decades (e.g. temperature, density,
+      !! luminosity), else linear. No finite samples gives range [0, 1].
+      ! Arguments
       integer(int32), intent(in) :: f
+         !! Field index in registry.
       logical :: wide
 
       if (field_vmax(f) < field_vmin(f)) then
@@ -186,13 +216,17 @@ contains
       field_log(f) = wide
    end subroutine finalize_field_log
 
-   ! contour bin (1..FIELD_NBINS) of a value under field f's range, in log10
-   ! when logscale.  a log scale starts at the smallest positive value in the
-   ! run, so values <= 0 fall in bin 1.
    pure function field_level(v, f, logscale) result(lev)
+      !! Return contour bin (1 to `FIELD_NBINS`) of value in range of field `f`.
+      !!
+      !! Log scale starts at run's smallest positive value, so values at or below 0 fall in bin 1.
+      ! Arguments
       real(real64), intent(in) :: v
+         !! Value to bin.
       integer(int32), intent(in) :: f
+         !! Field index in registry.
       logical, intent(in) :: logscale
+         !! Bin in `log10`, not linearly.
       integer(int32) :: lev
       real(real64) :: a, b, x, t
 
@@ -214,14 +248,20 @@ contains
       if (lev > FIELD_NBINS) lev = FIELD_NBINS
    end function field_level
 
-   ! run-length compress a per-cell field (center -> surface) into
-   ! (level, coordinate-index) step functions, the same shape build_energy
-   ! produces: out(1) binned in the field's default scale, out(2) in the
-   ! other one.  every cell maps to a valid bin, so the star tiles fully.
    subroutine build_field_layer(raw, nz, f, out)
+      !! Run-length compress per-cell field into two (level, coordinate index) step functions.
+      !!
+      !! Same shape as `build_energy` output: `out(1)` in field's default scale, `out(2)` in other.
+      !! Every cell maps to a valid bin, so star tiles fully.
+      ! Arguments
       real(real64), intent(in) :: raw(:)
-      integer(int32), intent(in) :: nz, f
+         !! Field value of each cell, centre to surface.
+      integer(int32), intent(in) :: nz
+         !! Number of cells.
+      integer(int32), intent(in) :: f
+         !! Field index in registry.
       type(fieldlayer), intent(out) :: out(2)
+         !! Step functions in default and other scale.
       integer(int32) :: j, k, lev, prev, n
       integer(int32), allocatable :: lv(:), ix(:)
 
@@ -248,10 +288,14 @@ contains
       deallocate (lv, ix)
    end subroutine build_field_layer
 
-   ! allocate the layer-1 and derivative / advection arrays at size zero so
-   ! size() and unconditional loops in the renderer are safe
    subroutine alloc_empty_layers(cnv)
+      !! Allocate layers and arrays profile readers leave unfilled, at size zero.
+      !!
+      !! `nuk`, derivative layers and advection arrays; keeps renderer's `size` calls and
+      !! unconditional loops safe.
+      ! Arguments
       type(convtype), intent(inout) :: cnv
+         !! Record to complete.
 
       cnv%nnuk = 0
       cnv%nnucd = 0

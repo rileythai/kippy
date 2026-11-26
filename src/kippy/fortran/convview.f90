@@ -17,14 +17,12 @@
 ! License along with kippy. If not, see <https://www.gnu.org/licenses/>.
 
 ! convview.f90 -- interactive Kippenhahn viewer
-!
-! Usage:  ./convview [file.cnv]      (default: convdata.cnv)
-!
-! Reads commands from stdin and re-renders after each.  Works with an
-! interactive /xw window (when $DISPLAY is set) or can write PNG
-! snapshots when headless.
-!
 program convview
+   !! Interactive Kippenhahn viewer.
+   !!
+   !! Usage: `convview [path]`, default `convdata.cnv` (docs/usage.md). Reads commands from stdin,
+   !! re-renders after each (docs/commands.md): `/xw` window when `$DISPLAY` is set, else PNG
+   !! snapshots.
 
    use kipp
    implicit none (type, external)
@@ -184,10 +182,21 @@ program convview
 
 contains
 
-   ! split a line into up to four whitespace-separated tokens
    subroutine tokens(s, t0, t1, t2, t3)
+      !! Split line into up to four whitespace-separated tokens.
+      !!
+      !! Missing tokens blank, tokens past fourth dropped.
+      ! Arguments
       character(len=*), intent(in)  :: s
-      character(len=*), intent(out) :: t0, t1, t2, t3
+         !! Input line.
+      character(len=*), intent(out) :: t0
+         !! First token (command).
+      character(len=*), intent(out) :: t1
+         !! Second token.
+      character(len=*), intent(out) :: t2
+         !! Third token.
+      character(len=*), intent(out) :: t3
+         !! Fourth token.
       character(len=len(s)) :: buf
       t0 = ''; t1 = ''; t2 = ''; t3 = ''
       buf = adjustl(s)
@@ -198,8 +207,12 @@ contains
    end subroutine tokens
 
    subroutine pop(buf, tok)
+      !! Remove first whitespace-separated token from `buf`.
+      ! Arguments
       character(len=*), intent(inout) :: buf
+         !! Text left to split.
       character(len=*), intent(out)   :: tok
+         !! Removed token, blank when `buf` is empty.
       integer :: p
       buf = adjustl(buf)
       p = index(buf, ' ')
@@ -211,8 +224,18 @@ contains
    end subroutine pop
 
    logical function rd2(a, b, x, y)
-      character(len=*), intent(in) :: a, b
-      real(8), intent(out) :: x, y
+      !! Read one number from each of two tokens.
+      !!
+      !! False, w/ `need two numbers` printed, if either fails to parse.
+      ! Arguments
+      character(len=*), intent(in) :: a
+         !! First token.
+      character(len=*), intent(in) :: b
+         !! Second token.
+      real(8), intent(out) :: x
+         !! Number read from `a`.
+      real(8), intent(out) :: y
+         !! Number read from `b`.
       integer :: e1, e2
       rd2 = .false.
       read (a, *, iostat=e1) x
@@ -225,6 +248,7 @@ contains
    end function rd2
 
    subroutine help()
+      !! Print the command summary.
       print '(a)', 'commands:'
       print '(a)', '  xlim <min> <max>      ylim <min> <max>'
       print '(a)', '  xscale lin|log        yscale lin|log'

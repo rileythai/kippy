@@ -16,12 +16,12 @@
 ! You should have received a copy of the GNU Lesser General Public
 ! License along with kippy. If not, see <https://www.gnu.org/licenses/>.
 
-! convdump.f90 -- diagnostic tool to load any supported input and print
-! first/last model summary stats.
-!
-! Usage:  ./convdump [file.cnv]      (default: convdata.cnv)
-!
+! convdump.f90 -- reader diagnostic that prints summary values of an input
 program convdump
+   !! Load any supported input and print summary values of first and last models.
+   !!
+   !! Usage: `convdump [path]`, default `convdata.cnv` (docs/usage.md). Prints model count first;
+   !! reader picked from path by `load_convection`.
 
    use typedef, only: int32
    use convdata, only: data
@@ -46,7 +46,10 @@ program convdump
 contains
 
    subroutine show(i)
+      !! Print `ncyc`, `nconv`, `ncoord`, `tc`, `dc`, `summ0` and sum of `xmcoord` for one model.
+      ! Arguments
       integer(int32), intent(in) :: i
+         !! Model index.
       print '(a,i0,a,i0,a,i0)', '--- model index ', i, &
          '  ncyc=', data(i)%ncyc, '  nconv=', data(i)%nconv
       print '(a,i0,a,es22.15,a,es22.15)', '  ncoord=', data(i)%ncoord, &

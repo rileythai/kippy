@@ -16,12 +16,19 @@
 ! You should have received a copy of the GNU Lesser General Public
 ! License along with kippy. If not, see <https://www.gnu.org/licenses/>.
 
+! monload.f90 -- reader of MONASH seq files
 module monload
+   !! Reader of MONASH `seq` files into `convdata%data`.
+   !!
+   !! Format and colour fields in "MONASH `seq`", docs/formats.md. Two passes: records and field
+   !! ranges, then binned field layers. `kcvtn` codes as set in MONASH code (amanda/phys.f, closed
+   !! source, no public reference).
 
    use typedef, only: &
       int16, int32, real64
    use convdata, only: &
-      convtype, data, idx_kind_len, nuc_kind_len, field_names
+      convtype, data, idx_kind_len, nuc_kind_len, field_names, &
+      ZONE_CHAR, RADIATIVE, OVERSHOOT, CONVECTIVE
    use convbuild, only: &
       SOLRAD, EPS_BASE, GROW_FAC, REC_NVERS, &
       build_zones, build_energy, build_field_layer, alloc_empty_layers, &
@@ -34,24 +41,53 @@ module monload
 
    public :: loadmon
 
-   integer(int32), parameter :: MON_NFIELDS = 11
+   integer(int16), parameter :: MON_RADIATIVE = 0
+      !! `kcvtn` code of radiative cell.
+   integer(int16), parameter :: MON_CONVECTIVE = 1
+      !! `kcvtn` code of convective cell.
+   integer(int16), parameter :: MON_SEMICONV = 2
+      !! `kcvtn` code of gap between convective envelope base and a second convective zone below it.
+      !!
+      !! Gap mixed when MONASH `isemi` flag is set.
+   integer(int16), parameter :: MON_OVERSHOOT = 3
+      !! `kcvtn` code of overshoot cell.
+
+   integer(int32), parameter :: MON_NFIELDS = 20
+      !! Number of colour fields.
    real(real64), parameter :: LSUN = 3.851d33
+      !! Solar luminosity (erg/s), from MONASH `seqdump`.
+      !!
+      !! MONASH itself uses 3.8515d33, citing Guenther et al. 1992, ApJ 387, 372.
    character(len=32), parameter :: MON_FIELD_NAMES(MON_NFIELDS) = [ &
       character(len=32) :: &
       'Temperature', 'Density', 'Pressure', 'Luminosity', &
       'H_reaction_rate', 'He3_reaction_rate', 'He4_reaction_rate', &
       'C_reaction_rate', 'N_reaction_rate', 'O_reaction_rate', &
-      'Other_reaction_rate']
+      'Other_reaction_rate', 'Internal_energy', 'Convective_velocity', &
+      'X_H', 'X_He3', 'X_He4', 'X_C', 'X_N', 'X_O', 'X_Other']
+      !! Colour-field names, in `rawset%v` column order.
 
    type :: rawset
+      !! Colour-field values of one model.
       real(real64), allocatable :: v(:, :)
+         !! Value per cell (rows) and field (columns).
    end type rawset
 
 contains
 
    subroutine loadmon(path, ifirst, ilast)
+      !! Load models of MONASH `seq` file into `data`.
+      !!
+      !! Skips models outside `ifirst` to `ilast`. Pass one builds records and widens field ranges,
+      !! pass two re-reads file to bin field layers, then `sort_models`. Stops w/ error if file
+      !! changed between passes or fewer than 2 models in range.
+      ! Arguments
       character(len=*), intent(in) :: path
-      integer(int32), intent(in) :: ifirst, ilast
+         !! Path of the `seq` file.
+      integer(int32), intent(in) :: ifirst
+         !! First model number to load.
+      integer(int32), intent(in) :: ilast
+         !! Last model number to load.
 
       integer :: iunit, iostat, ncurrent, npts, i, j
       integer(int32) :: ndata, ncap, m, fld
@@ -100,7 +136,7 @@ contains
             if (ndata > ncap) call grow_models(recs, ncap, ndata - 1)
             call build_mon_record(recs(ndata), raw, ncurrent, npts, &
                                   time, tint, mass, ltc, lpc, omx, rhop, &
-                                  kcvtn, f, wd)
+                                  up, vconvp, kcvtn, f, w, wd)
          end block
       end do
 
@@ -147,7 +183,8 @@ contains
             if (ncurrent /= recs(m)%ncyc .or. &
                 npts /= recs(m)%ncoord) &
                error stop '[loadmon] file changed between passes'
-            call build_mon_fields(raw, npts, ltc, lpc, rhop, f, wd)
+            call build_mon_fields(raw, npts, ltc, lpc, rhop, up, vconvp, &
+                                  f, w, wd)
             recs(m)%nfld = MON_NFIELDS
             allocate (recs(m)%fld(2, MON_NFIELDS))
             do fld = 1, MON_NFIELDS
@@ -170,9 +207,14 @@ contains
    end subroutine loadmon
 
    subroutine grow_models(recs, ncap, nkeep)
+      !! Extend `recs` by `GROW_FAC`, keeping first `nkeep` records.
+      ! Arguments
       type(convtype), allocatable, intent(inout) :: recs(:)
+         !! Record array.
       integer(int32), intent(inout) :: ncap
+         !! Capacity of `recs`, updated to the new size.
       integer(int32), intent(in) :: nkeep
+         !! Number of records to keep.
       type(convtype), allocatable :: newrecs(:)
 
       ncap = int(ncap*GROW_FAC)
@@ -182,14 +224,49 @@ contains
    end subroutine grow_models
 
    subroutine build_mon_record(cnv, raw, model, nz, time, dt, mass, ltc, &
-                               lpc, omx, rhop, kcvtn, f, wd)
+                               lpc, omx, rhop, up, vconvp, kcvtn, f, w, wd)
+      !! Build record of one MONASH model.
+      !!
+      !! Mass coord `mass * (1 - omx)^3`, centre to surface; radius is running sum of radius steps;
+      !! epsnuc layer approximated from `dL/dm`, which includes gravothermal terms; zones from
+      !! `kcvtn` via `mon_type_char`. Widens field ranges w/ model's colour-field values.
+      ! Arguments
       type(convtype), intent(out) :: cnv
+         !! Record to build.
       type(rawset), intent(out) :: raw
-      integer, intent(in) :: model, nz
-      real(real64), intent(in) :: time, dt, mass, ltc, lpc
-      real(real64), intent(in) :: omx(:), rhop(:), f(:, :)
+         !! Colour-field values of model.
+      integer, intent(in) :: model
+         !! Model number.
+      integer, intent(in) :: nz
+         !! Number of cells.
+      real(real64), intent(in) :: time
+         !! Age (s), stored as `timesec`.
+      real(real64), intent(in) :: dt
+         !! Time step that reached this model (s), stored as `dt`.
+      real(real64), intent(in) :: mass
+         !! Total mass (g).
+      real(real64), intent(in) :: ltc
+         !! Central temperature, `ln T`.
+      real(real64), intent(in) :: lpc
+         !! Central pressure, `ln P`.
+      real(real64), intent(in) :: omx(:)
+         !! Mass coordinate `omx` of each cell.
+      real(real64), intent(in) :: rhop(:)
+         !! Density of each cell.
+      real(real64), intent(in) :: up(:)
+         !! Internal energy per gram of each cell.
+      real, intent(in) :: vconvp(:)
+         !! Convective velocity of each cell.
       integer(int16), intent(in) :: kcvtn(:)
+         !! Convection code of each cell.
+      real(real64), intent(in) :: f(:, :)
+         !! Steps across each cell.
+         !!
+         !! Rows: luminosity (Lsun), `ln T`, radius (Rsun), `ln P`.
+      real, intent(in) :: w(:, :)
+         !! Seven mass fractions of each cell.
       real, intent(in) :: wd(:, :)
+         !! Seven reaction rates of each cell.
 
       integer(int32) :: j, fld
       real(real64) :: radius, dm
@@ -197,7 +274,7 @@ contains
       character(len=1), allocatable :: zones(:)
 
       allocate (xm(nz), rn(nz), eps(nz), zones(nz))
-      call build_mon_fields(raw, nz, ltc, lpc, rhop, f, wd)
+      call build_mon_fields(raw, nz, ltc, lpc, rhop, up, vconvp, f, w, wd)
 
       radius = 0.d0
       do j = 1, nz
@@ -261,11 +338,33 @@ contains
       deallocate (xm, rn, eps, zones)
    end subroutine build_mon_record
 
-   subroutine build_mon_fields(raw, nz, ltc, lpc, rhop, f, wd)
+   subroutine build_mon_fields(raw, nz, ltc, lpc, rhop, up, vconvp, f, w, wd)
+      !! Fill colour-field values of one model, in `MON_FIELD_NAMES` order.
+      !!
+      !! Temperature, pressure and luminosity are running sums of their steps from centre.
+      ! Arguments
       type(rawset), intent(out) :: raw
+         !! Colour-field values.
       integer, intent(in) :: nz
-      real(real64), intent(in) :: ltc, lpc, rhop(:), f(:, :)
+         !! Number of cells.
+      real(real64), intent(in) :: ltc
+         !! Central temperature, `ln T`.
+      real(real64), intent(in) :: lpc
+         !! Central pressure, `ln P`.
+      real(real64), intent(in) :: rhop(:)
+         !! Density of each cell.
+      real(real64), intent(in) :: up(:)
+         !! Internal energy per gram of each cell.
+      real, intent(in) :: vconvp(:)
+         !! Convective velocity of each cell.
+      real(real64), intent(in) :: f(:, :)
+         !! Steps across each cell.
+         !!
+         !! Rows: luminosity (Lsun), `ln T`, radius (Rsun), `ln P`.
+      real, intent(in) :: w(:, :)
+         !! Seven mass fractions of each cell.
       real, intent(in) :: wd(:, :)
+         !! Seven reaction rates of each cell.
 
       integer :: j
       real(real64) :: lum, ln_temp, ln_pressure
@@ -283,18 +382,26 @@ contains
          raw%v(j, 3) = exp(ln_pressure)
          raw%v(j, 4) = lum
          raw%v(j, 5:11) = real(wd(1:7, j), real64)
+         raw%v(j, 12) = up(j)
+         raw%v(j, 13) = real(vconvp(j), real64)
+         raw%v(j, 14:20) = real(w(1:7, j), real64)
       end do
    end subroutine build_mon_fields
 
    pure function mon_type_char(m) result(c)
+      !! Return `ZONE_CHAR` type of `kcvtn` code.
+      !!
+      !! Semiconvective gaps and unknown codes draw as convective.
+      ! Arguments
       integer(int16), intent(in) :: m
+         !! `kcvtn` code.
       character(len=1) :: c
 
       select case (m)
-      case (0); c = ' '
-      case (1, 2); c = 'C'
-      case (3); c = 'O'
-      case default; c = 'C'
+      case (MON_RADIATIVE); c = ZONE_CHAR(RADIATIVE)
+      case (MON_CONVECTIVE, MON_SEMICONV); c = ZONE_CHAR(CONVECTIVE)
+      case (MON_OVERSHOOT); c = ZONE_CHAR(OVERSHOOT)
+      case default; c = ZONE_CHAR(CONVECTIVE)
       end select
    end function mon_type_char
 

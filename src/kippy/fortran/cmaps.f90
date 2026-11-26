@@ -16,13 +16,14 @@
 ! You should have received a copy of the GNU Lesser General Public
 ! License along with kippy. If not, see <https://www.gnu.org/licenses/>.
 
-! colour-field colormaps.  teal, blue and gray are analytic ramps; the rest
-! are matplotlib 3.10.8 colormaps sampled at NANCHOR evenly spaced points
-! (cmap(linspace(0, 1, 33)), rounded to 4 decimals) and interpolated
-! linearly, which stays within 6/255 of matplotlib.  Greys .. Oranges and RdBu
-! are ColorBrewer schemes (Cynthia Brewer, Apache-style licence), coolwarm is
-! Kenneth Moreland's diverging map.
+! cmaps.f90 -- colour-field colormaps
 module cmaps
+   !! Colormaps of colour fields.
+   !!
+   !! `teal`, `blue`, `gray` analytic; rest sampled from matplotlib 3.10.8 at `NANCHOR` anchors
+   !! (`cmap(linspace(0, 1, 33))`, 4 decimals), linearly interpolated to within 6/255. `Greys` to
+   !! `Oranges` and `RdBu` are ColorBrewer (Cynthia Brewer, Apache-style licence), `coolwarm` is
+   !! Kenneth Moreland's diverging map.
 
    use typedef, only: int32, real64
 
@@ -30,11 +31,14 @@ module cmaps
    private
 
    integer(int32), parameter :: NANCHOR = 33
+      !! Number of anchors per sampled colormap.
    integer(int32), parameter, public :: NCMAPS = 17
+      !! Number of colormaps.
    character(len=8), parameter, public :: CMAP_NAMES(NCMAPS) = [character(len=8) :: &
       'teal', 'blue', 'gray', 'viridis', 'plasma', 'inferno', &
       'magma', 'cividis', 'Greys', 'Blues', 'Greens', 'Reds', &
       'Purples', 'Oranges', 'coolwarm', 'RdBu', 'turbo']
+      !! Colormap names as `cmap` command takes them (docs/commands.md).
 
    real(real64), parameter :: VIRIDIS(3, NANCHOR) = reshape([ &
       0.2670d0, 0.0049d0, 0.3294d0, 0.2770d0, 0.0503d0, 0.3757d0, 0.2823d0, 0.0950d0, 0.4173d0, &
@@ -48,6 +52,7 @@ module cmaps
       0.3692d0, 0.7889d0, 0.3829d0, 0.4401d0, 0.8111d0, 0.3410d0, 0.5160d0, 0.8312d0, 0.2943d0, &
       0.5958d0, 0.8487d0, 0.2433d0, 0.6785d0, 0.8637d0, 0.1895d0, 0.7624d0, 0.8764d0, 0.1371d0, &
       0.8456d0, 0.8873d0, 0.0997d0, 0.9261d0, 0.8973d0, 0.1041d0, 0.9932d0, 0.9062d0, 0.1439d0], [3, NANCHOR])
+      !! Anchors of matplotlib `viridis`, RGB in [0, 1].
 
    real(real64), parameter :: PLASMA(3, NANCHOR) = reshape([ &
       0.0504d0, 0.0298d0, 0.5280d0, 0.1324d0, 0.0223d0, 0.5633d0, 0.1934d0, 0.0184d0, 0.5903d0, &
@@ -61,6 +66,7 @@ module cmaps
       0.9734d0, 0.5858d0, 0.2515d0, 0.9842d0, 0.6297d0, 0.2246d0, 0.9914d0, 0.6754d0, 0.1985d0, &
       0.9945d0, 0.7227d0, 0.1744d0, 0.9930d0, 0.7717d0, 0.1548d0, 0.9865d0, 0.8224d0, 0.1436d0, &
       0.9744d0, 0.8746d0, 0.1441d0, 0.9568d0, 0.9282d0, 0.1524d0, 0.9400d0, 0.9752d0, 0.1313d0], [3, NANCHOR])
+      !! Anchors of matplotlib `plasma`, RGB in [0, 1].
 
    real(real64), parameter :: INFERNO(3, NANCHOR) = reshape([ &
       0.0015d0, 0.0005d0, 0.0139d0, 0.0140d0, 0.0112d0, 0.0719d0, 0.0423d0, 0.0281d0, 0.1411d0, &
@@ -74,6 +80,7 @@ module cmaps
       0.9784d0, 0.5579d0, 0.0349d0, 0.9860d0, 0.6158d0, 0.0256d0, 0.9879d0, 0.6753d0, 0.0653d0, &
       0.9841d0, 0.7361d0, 0.1295d0, 0.9746d0, 0.7977d0, 0.2063d0, 0.9606d0, 0.8591d0, 0.2980d0, &
       0.9476d0, 0.9174d0, 0.4107d0, 0.9545d0, 0.9659d0, 0.5404d0, 0.9884d0, 0.9984d0, 0.6449d0], [3, NANCHOR])
+      !! Anchors of matplotlib `inferno`, RGB in [0, 1].
 
    real(real64), parameter :: MAGMA(3, NANCHOR) = reshape([ &
       0.0015d0, 0.0005d0, 0.0139d0, 0.0137d0, 0.0118d0, 0.0687d0, 0.0396d0, 0.0311d0, 0.1335d0, &
@@ -87,6 +94,7 @@ module cmaps
       0.9867d0, 0.5356d0, 0.3822d0, 0.9928d0, 0.5949d0, 0.4103d0, 0.9961d0, 0.6537d0, 0.4462d0, &
       0.9973d0, 0.7118d0, 0.4882d0, 0.9969d0, 0.7696d0, 0.5349d0, 0.9951d0, 0.8271d0, 0.5857d0, &
       0.9924d0, 0.8843d0, 0.6401d0, 0.9894d0, 0.9415d0, 0.6975d0, 0.9871d0, 0.9914d0, 0.7495d0], [3, NANCHOR])
+      !! Anchors of matplotlib `magma`, RGB in [0, 1].
 
    real(real64), parameter :: CIVIDIS(3, NANCHOR) = reshape([ &
       0.0000d0, 0.1351d0, 0.3048d0, 0.0000d0, 0.1579d0, 0.3575d0, 0.0000d0, 0.1788d0, 0.4148d0, &
@@ -100,6 +108,7 @@ module cmaps
       0.7365d0, 0.6806d0, 0.4240d0, 0.7694d0, 0.7070d0, 0.4085d0, 0.8027d0, 0.7340d0, 0.3902d0, &
       0.8364d0, 0.7615d0, 0.3687d0, 0.8707d0, 0.7896d0, 0.3433d0, 0.9056d0, 0.8183d0, 0.3129d0, &
       0.9411d0, 0.8475d0, 0.2758d0, 0.9778d0, 0.8773d0, 0.2280d0, 0.9957d0, 0.9093d0, 0.2178d0], [3, NANCHOR])
+      !! Anchors of matplotlib `cividis`, RGB in [0, 1].
 
    real(real64), parameter :: GREYS(3, NANCHOR) = reshape([ &
       1.0000d0, 1.0000d0, 1.0000d0, 0.9852d0, 0.9852d0, 0.9852d0, 0.9705d0, 0.9705d0, 0.9705d0, &
@@ -113,6 +122,7 @@ module cmaps
       0.3174d0, 0.3174d0, 0.3174d0, 0.2731d0, 0.2731d0, 0.2731d0, 0.2288d0, 0.2288d0, 0.2288d0, &
       0.1845d0, 0.1845d0, 0.1845d0, 0.1411d0, 0.1411d0, 0.1411d0, 0.1047d0, 0.1047d0, 0.1047d0, &
       0.0683d0, 0.0683d0, 0.0683d0, 0.0319d0, 0.0319d0, 0.0319d0, 0.0000d0, 0.0000d0, 0.0000d0], [3, NANCHOR])
+      !! Anchors of ColorBrewer `Greys`, RGB in [0, 1].
 
    real(real64), parameter :: BLUES(3, NANCHOR) = reshape([ &
       0.9686d0, 0.9843d0, 1.0000d0, 0.9440d0, 0.9686d0, 0.9921d0, 0.9194d0, 0.9528d0, 0.9843d0, &
@@ -126,6 +136,7 @@ module cmaps
       0.1271d0, 0.4402d0, 0.7075d0, 0.1025d0, 0.4087d0, 0.6829d0, 0.0779d0, 0.3772d0, 0.6583d0, &
       0.0533d0, 0.3457d0, 0.6337d0, 0.0314d0, 0.3141d0, 0.6065d0, 0.0314d0, 0.2816d0, 0.5583d0, &
       0.0314d0, 0.2491d0, 0.5100d0, 0.0314d0, 0.2167d0, 0.4618d0, 0.0314d0, 0.1882d0, 0.4196d0], [3, NANCHOR])
+      !! Anchors of ColorBrewer `Blues`, RGB in [0, 1].
 
    real(real64), parameter :: GREENS(3, NANCHOR) = reshape([ &
       0.9686d0, 0.9882d0, 0.9608d0, 0.9509d0, 0.9813d0, 0.9401d0, 0.9332d0, 0.9745d0, 0.9194d0, &
@@ -139,6 +150,7 @@ module cmaps
       0.1340d0, 0.5423d0, 0.2683d0, 0.0996d0, 0.5128d0, 0.2437d0, 0.0651d0, 0.4833d0, 0.2191d0, &
       0.0307d0, 0.4537d0, 0.1945d0, 0.0000d0, 0.4230d0, 0.1707d0, 0.0000d0, 0.3827d0, 0.1540d0, &
       0.0000d0, 0.3423d0, 0.1373d0, 0.0000d0, 0.3020d0, 0.1205d0, 0.0000d0, 0.2667d0, 0.1059d0], [3, NANCHOR])
+      !! Anchors of ColorBrewer `Greens`, RGB in [0, 1].
 
    real(real64), parameter :: REDS(3, NANCHOR) = reshape([ &
       1.0000d0, 0.9608d0, 0.9412d0, 0.9990d0, 0.9401d0, 0.9116d0, 0.9980d0, 0.9194d0, 0.8821d0, &
@@ -152,6 +164,7 @@ module cmaps
       0.7926d0, 0.0933d0, 0.1130d0, 0.7552d0, 0.0844d0, 0.1051d0, 0.7178d0, 0.0756d0, 0.0972d0, &
       0.6804d0, 0.0667d0, 0.0894d0, 0.6404d0, 0.0572d0, 0.0815d0, 0.5794d0, 0.0424d0, 0.0736d0, &
       0.5183d0, 0.0277d0, 0.0657d0, 0.4573d0, 0.0129d0, 0.0579d0, 0.4039d0, 0.0000d0, 0.0510d0], [3, NANCHOR])
+      !! Anchors of ColorBrewer `Reds`, RGB in [0, 1].
 
    real(real64), parameter :: PURPLES(3, NANCHOR) = reshape([ &
       0.9882d0, 0.9843d0, 0.9922d0, 0.9754d0, 0.9705d0, 0.9843d0, 0.9626d0, 0.9568d0, 0.9764d0, &
@@ -165,6 +178,7 @@ module cmaps
       0.4137d0, 0.3138d0, 0.6374d0, 0.3920d0, 0.2724d0, 0.6177d0, 0.3703d0, 0.2311d0, 0.5980d0, &
       0.3487d0, 0.1898d0, 0.5783d0, 0.3272d0, 0.1487d0, 0.5588d0, 0.3065d0, 0.1104d0, 0.5411d0, &
       0.2858d0, 0.0720d0, 0.5234d0, 0.2651d0, 0.0336d0, 0.5057d0, 0.2471d0, 0.0000d0, 0.4902d0], [3, NANCHOR])
+      !! Anchors of ColorBrewer `Purples`, RGB in [0, 1].
 
    real(real64), parameter :: ORANGES(3, NANCHOR) = reshape([ &
       1.0000d0, 0.9608d0, 0.9216d0, 0.9990d0, 0.9460d0, 0.8930d0, 0.9980d0, 0.9313d0, 0.8645d0, &
@@ -178,6 +192,7 @@ module cmaps
       0.8463d0, 0.2807d0, 0.0041d0, 0.7961d0, 0.2630d0, 0.0061d0, 0.7459d0, 0.2453d0, 0.0080d0, &
       0.6957d0, 0.2275d0, 0.0100d0, 0.6468d0, 0.2101d0, 0.0119d0, 0.6084d0, 0.1954d0, 0.0129d0, &
       0.5700d0, 0.1806d0, 0.0138d0, 0.5316d0, 0.1659d0, 0.0148d0, 0.4980d0, 0.1529d0, 0.0157d0], [3, NANCHOR])
+      !! Anchors of ColorBrewer `Oranges`, RGB in [0, 1].
 
    real(real64), parameter :: COOLWARM(3, NANCHOR) = reshape([ &
       0.2298d0, 0.2987d0, 0.7537d0, 0.2664d0, 0.3533d0, 0.8016d0, 0.3042d0, 0.4069d0, 0.8453d0, &
@@ -191,6 +206,7 @@ module cmaps
       0.9567d0, 0.5980d0, 0.4773d0, 0.9417d0, 0.5464d0, 0.4297d0, 0.9214d0, 0.4914d0, 0.3834d0, &
       0.8959d0, 0.4331d0, 0.3387d0, 0.8654d0, 0.3711d0, 0.2958d0, 0.8302d0, 0.3047d0, 0.2549d0, &
       0.7906d0, 0.2314d0, 0.2162d0, 0.7468d0, 0.1400d0, 0.1800d0, 0.7057d0, 0.0156d0, 0.1502d0], [3, NANCHOR])
+      !! Anchors of Moreland's `coolwarm`, RGB in [0, 1].
 
    real(real64), parameter :: RDBU(3, NANCHOR) = reshape([ &
       0.4039d0, 0.0000d0, 0.1216d0, 0.4962d0, 0.0295d0, 0.1363d0, 0.5885d0, 0.0591d0, 0.1511d0, &
@@ -204,6 +220,7 @@ module cmaps
       0.4085d0, 0.6687d0, 0.8145d0, 0.3113d0, 0.6072d0, 0.7813d0, 0.2418d0, 0.5488d0, 0.7506d0, &
       0.2000d0, 0.4934d0, 0.7223d0, 0.1582d0, 0.4381d0, 0.6940d0, 0.1186d0, 0.3792d0, 0.6457d0, &
       0.0842d0, 0.3128d0, 0.5534d0, 0.0498d0, 0.2464d0, 0.4611d0, 0.0196d0, 0.1882d0, 0.3804d0], [3, NANCHOR])
+      !! Anchors of ColorBrewer `RdBu`, RGB in [0, 1].
 
    real(real64), parameter :: TURBO(3, NANCHOR) = reshape([ &
       0.1900d0, 0.0718d0, 0.2322d0, 0.2250d0, 0.1635d0, 0.4510d0, 0.2511d0, 0.2524d0, 0.6337d0, &
@@ -217,17 +234,28 @@ module cmaps
       0.9836d0, 0.4929d0, 0.1285d0, 0.9580d0, 0.3996d0, 0.0883d0, 0.9211d0, 0.3149d0, 0.0548d0, &
       0.8742d0, 0.2453d0, 0.0330d0, 0.8161d0, 0.1846d0, 0.0181d0, 0.7462d0, 0.1310d0, 0.0085d0, &
       0.6645d0, 0.0844d0, 0.0042d0, 0.5710d0, 0.0447d0, 0.0053d0, 0.4796d0, 0.0158d0, 0.0106d0], [3, NANCHOR])
+      !! Anchors of matplotlib `turbo`, RGB in [0, 1].
 
    public :: cmap_rgb
 
 contains
 
-   ! colormap `name` (one of CMAP_NAMES) at t in [0,1] -> r, g, b in [0,1].
-   ! unknown names fall back to teal.
    pure subroutine cmap_rgb(name, t, r, g, b)
+      !! Return colour of colormap `name` at `t`.
+      !!
+      !! `t` clamped to [0, 1], unknown names fall back to `teal`. `_r` reversal is done by
+      !! `axes%colormap`, not here.
+      ! Arguments
       character(len=*), intent(in) :: name
+         !! Colormap name, a `CMAP_NAMES` entry.
       real(real64), intent(in) :: t
-      real(real64), intent(out) :: r, g, b
+         !! Position along map, 0 at low end, 1 at high end.
+      real(real64), intent(out) :: r
+         !! Red, in [0, 1].
+      real(real64), intent(out) :: g
+         !! Green, in [0, 1].
+      real(real64), intent(out) :: b
+         !! Blue, in [0, 1].
       real(real64) :: x
       x = min(max(t, 0.d0), 1.d0)
       select case (name)
@@ -271,8 +299,18 @@ contains
    end subroutine cmap_rgb
 
    pure subroutine interp(tab, x, r, g, b)
-      real(real64), intent(in) :: tab(3, NANCHOR), x
-      real(real64), intent(out) :: r, g, b
+      !! Interpolate sampled-colormap anchors linearly at `x`.
+      ! Arguments
+      real(real64), intent(in) :: tab(3, NANCHOR)
+         !! Anchor colours, RGB in [0, 1].
+      real(real64), intent(in) :: x
+         !! Position along map, in [0, 1].
+      real(real64), intent(out) :: r
+         !! Red, in [0, 1].
+      real(real64), intent(out) :: g
+         !! Green, in [0, 1].
+      real(real64), intent(out) :: b
+         !! Blue, in [0, 1].
       real(real64) :: xx, u
       integer(int32) :: k
       xx = x*real(NANCHOR - 1, real64)

@@ -16,14 +16,23 @@
 ! You should have received a copy of the GNU Lesser General Public
 ! License along with kippy. If not, see <https://www.gnu.org/licenses/>.
 
+! typedef.f90 -- integer and real kinds
 module typedef
+  !! Integer and real kinds for every kippy module.
+  !!
+  !! Each kind selected by decimal range.
 
   implicit none
 
   integer, parameter :: int8 = selected_int_kind(2)
+     !! 1-byte integer, at least 2 decimal digits.
   integer, parameter :: int16 = selected_int_kind(4)
+     !! 2-byte integer, at least 4 decimal digits.
   integer, parameter :: int32 = selected_int_kind(8)
+     !! 4-byte integer, at least 8 decimal digits.
   integer, parameter :: int64 = selected_int_kind(16)
+     !! 8-byte integer, at least 16 decimal digits.
   integer, parameter :: real64 = selected_real_kind(15)
+     !! Double-precision real, at least 15 significant digits.
 
 end module typedef

@@ -16,4 +16,5 @@ nav = [
   ] },
   { "Writing from MESA" = "mesa.md" },
   { "Python API" = "api.md" },
+  { "Fortran API" = "fortran/index.html" },
 ]
