@@ -10,22 +10,20 @@ including `giza`, `cairo`, and `gfortran` runtime libs.
 pip install kippy
 ```
 
-The wheels do expect system X11 libraries: Linux needs `libX11`, `libXext`,
+The wheels expect system X11 libraries: Linux needs `libX11`, `libXext`,
 `libXrender` and `libexpat`, which most desktop Linux distributions already provide. 
 
 macOS installs needs the [XQuartz](https://www.xquartz.org/) X server to draw X11 interactive windows
 ```bash
 brew install --cask xquartz
 ```
+Without XQuartz, `DISPLAY` is unset and `convview` renders headless to PNG and
+PDF files, with no cursor mode (see
+[headless rendering](usage.md#headless-rendering)).
+
 !!! note
     XQuartz sets `DISPLAY` through launchd when you log in. If `echo $DISPLAY`
-    prints nothing in a new terminal after installing, log out and back in. With
-    `DISPLAY` set, `convview` opens the interactive window as on Linux. kippy has no
-    native macOS window.
-
-    Without XQuartz, `DISPLAY` is unset and `convview` renders headless to PNG and
-    PDF files, with no cursor mode (see
-    [headless rendering](usage.md#headless-rendering)).
+    prints nothing in a new terminal after installing, log out and back in. 
 
     The `p` key copies the PNG to the macOS clipboard through `osascript`, which
     I have been told ships with macOS.
