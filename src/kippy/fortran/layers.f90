@@ -18,29 +18,13 @@
 
 ! layers.f90 -- data layers and band caches of the kipp renderer
 module layers
-   !! Data layer lookup and the band caches traced from it.
+   !! Data layers and band caches traced from them.
    !!
-   !! A "layer" is one per-model quantity that is traced into bands.
-   !! - Convection types come from the zone list `yzip` of each model.
-   !! - Energy layers are step functions of signed integer contour levels,
-   !!   positive for gain and negative for loss.
-   !!   - Layer 0 is nuclear energy generation, 1 nuclear energy loss, 2 neutrinos.
-   !! - Colour fields are columns binned into `FIELD_NBINS` levels, registered by
-   !!   the readers in convdata.f90.
-   !!
-   !! Some notes on functions:
-   !! - `layer_of_cfield` and `field_of_cfield` resolve the `color` selection `st%cfield`.
-   !! - `get_layer` and `get_field_buf` copy a model's step function.
-   !! - `level_intervals` turns one contour level of a step function into mass or radius intervals.
-   !! - `build_conv_cache`, `build_energy_cache` and `build_field_cache` trace every model
-   !!   into `conv_bands` and `conv_chains`, `ecache` and `fcache`.
-   !! - `cache_invalidate` drops every cache.
-   !!
-   !! draw.f90 draws the caches and reads the colour field lookups.
-   !! cursor.f90 reads the lookups for `print_cell`.
-   !! kipp.f90 calls `cache_invalidate` on file load and axis rebuild.
-   !! axes.f90 reads the energy caches and `level_mins` for the energy colorbar.
-   !! This module holds the caches used by the `draw` module.
+   !! A "layer" is a per-model quantity traced into bands: convection types (`yzip` zones), energy
+   !! layers (signed integer contour levels, positive gain, negative loss; 0 nuclear generation, 1
+   !! nuclear loss, 2 neutrinos) or colour fields (columns in `FIELD_NBINS` bins, registered in
+   !! convdata.f90). Caches traced on first use; `cache_invalidate` drops them on load and axis
+   !! rebuild.
 
    use typedef, only: int32, real64
    use convdata, only: data, FIELD_NBINS, nfields, field_names, RADIATIVE, NEUTRAL, OVERSHOOT, &
@@ -62,11 +46,11 @@ module layers
    type :: ecache_t
       !! Band cache of one energy layer.
       !!
-      !! One bandset per gain level and one per loss level.
+      !! One bandset per gain level and per loss level.
       logical :: valid = .false.
-         !! The bands are traced.
+         !! Bands traced.
       integer(int32) :: gmax = 0, lmax = 0
-         !! Highest gain level and highest loss level, as a positive number.
+         !! Highest gain and loss levels, loss as positive number.
       type(bandset_t), allocatable :: gain(:), loss(:)
          !! Bands of each gain level, `gain(1:gmax)`, and each loss level, `loss(1:lmax)`.
    end type ecache_t
@@ -74,10 +58,9 @@ module layers
    type :: fcache_t
       !! Band cache of one colour field on one scale.
       !!
-      !! One nested bandset per contour bin.
-      !! Bin 1 covers the whole star and higher bins nest inward.
+      !! One nested bandset per contour bin: bin 1 covers whole star, higher bins nest inward.
       logical :: valid = .false.
-         !! The bands are traced.
+         !! Bands traced.
       integer(int32) :: nlev = 0
          !! Number of contour bins.
       type(bandset_t), allocatable :: band(:)
@@ -85,25 +68,26 @@ module layers
    end type fcache_t
 
    type(bandset_t) :: conv_bands(NCONVTYPES)
-      !! Bands of each convection type, indexed by the codes of `type_of`.
+      !! Bands of each convection type, indexed by `type_of` codes.
    type(chainset_t) :: conv_chains(NCONVTYPES)
       !! Exact region outline of each convection type.
    logical :: conv_valid = .false.
       !! `conv_bands` and `conv_chains` are traced.
    type(ecache_t) :: ecache(0:2)
       !! Band cache of each energy layer.
+      !!
       !! Traced on first use, so `color` switches do not retrace.
    type(fcache_t), allocatable :: fcache(:, :)
       !! Band cache of each colour field, `(scale, field)` as in `convdata%fld`.
+      !!
       !! Traced on first use of each field and scale.
 
 contains
 
    pure function type_of(ch) result(t)
-      !! Return the convection-type code of a zone character.
+      !! Return convection-type code of zone character.
       !!
-      !! The codes and their characters are the `ZONE_CHAR` table of convdata.f90.
-      !! An unknown character is `RADIATIVE`.
+      !! Codes per `ZONE_CHAR` table (convdata.f90); unknown characters are `RADIATIVE`.
       ! Arguments
       character(len=1), intent(in) :: ch
          !! Zone character from `yzip`.
@@ -119,12 +103,10 @@ contains
    end function type_of
 
    pure function layer_of_cfield() result(layer)
-      !! Return the energy layer named by `st%cfield`, or -1.
+      !! Return energy layer named by `st%cfield`, or -1 if not an energy layer.
       !!
-      !! -1 means the selection is not an energy layer.
-      !! `epsnuc`, `enuc` and `nuc` give layer 0, signed as gain and loss.
-      !! `nuk` and `loss` give layer 1.
-      !! `neu` and `neutrino` give layer 2.
+      !! `epsnuc`, `enuc`, `nuc` -> 0 (signed gain and loss); `nuk`, `loss` -> 1; `neu`, `neutrino`
+      !! -> 2.
       integer(int32) :: layer
       select case (trim(st%cfield))
       case ('epsnuc', 'enuc', 'nuc'); layer = 0
@@ -135,10 +117,9 @@ contains
    end function layer_of_cfield
 
    pure function field_of_cfield() result(f)
-      !! Return the colour field named by `st%cfield`, `1..nfields`, or 0.
+      !! Return colour field named by `st%cfield`, `1..nfields`, or 0.
       !!
-      !! An exact source column name is matched first.
-      !! Then a few aliases are tried against the canonical names the readers emit.
+      !! Exact source column name first, then a few aliases against readers' canonical names.
       integer(int32) :: f, k
       character(len=len(st%cfield)) :: want
       f = 0
@@ -164,7 +145,7 @@ contains
    end function field_of_cfield
 
    pure function first_field(names) result(f)
-      !! Return the index of the first registered name in `names`, or 0.
+      !! Return index of first registered name in `names`, or 0.
       ! Arguments
       character(len=*), intent(in) :: names(:)
          !! Canonical field names, in order of preference.
@@ -182,9 +163,9 @@ contains
    end function first_field
 
    pure function field_layer_len(i, f) result(n)
-      !! Return the number of step-function entries of colour field `f` in model `i`.
+      !! Return step-function entry count of colour field `f` in model `i`.
       !!
-      !! The scale is the one selected by `fscale`.
+      !! Scale per `fscale`.
       ! Arguments
       integer(int32), intent(in) :: i
          !! Model index.
@@ -197,14 +178,14 @@ contains
    end function field_layer_len
 
    pure integer(int32) function fscale()
-      !! Return the scale index of the colour field: 1 default, 2 flipped by `st%cflip`.
+      !! Return colour-field scale index: 1 default, 2 flipped by `st%cflip`.
       fscale = merge(2_int32, 1_int32, st%cflip)
    end function fscale
 
    subroutine get_field_buf(i, f, vals, idxs, n)
-      !! Copy the step function of colour field `f` in model `i` into buffers.
+      !! Copy step function of colour field `f` in model `i` into buffers.
       !!
-      !! Parallel to `get_layer_buf` for the energy layers.
+      !! Field counterpart of `get_layer_buf`.
       ! Arguments
       integer(int32), intent(in)  :: i
          !! Model index.
@@ -224,17 +205,17 @@ contains
    end subroutine get_field_buf
 
    subroutine level_mins(layer, gmin, lmin)
-      !! Return the minimum log10 gain and loss levels of an energy layer.
+      !! Return minimum log10 gain and loss levels of energy layer.
       !!
-      !! These come from the file header, read as consecutive (gain, loss) pairs per layer.
-      !! The historic KEPLER field names are misleading: `minloss` is the nuclear gain minimum.
+      !! From file header, as consecutive (gain, loss) pairs per layer. Historic KEPLER names
+      !! mislead: `minloss` is nuclear gain minimum.
       ! Arguments
       integer(int32), intent(in)  :: layer
          !! Energy layer, 0 to 2.
       integer(int32), intent(out) :: gmin
-         !! log10 of the lowest gain level.
+         !! log10 of lowest gain level.
       integer(int32), intent(out) :: lmin
-         !! log10 of the lowest loss level.
+         !! log10 of lowest loss level.
       select case (layer)
       case (0); gmin = int(data(1)%minloss, int32); lmin = int(data(1)%mingain, int32)
       case (1); gmin = int(data(1)%minnucl, int32); lmin = int(data(1)%minnucg, int32)
@@ -244,7 +225,7 @@ contains
    end subroutine level_mins
 
    subroutine get_layer(i, layer, vals, idxs, n)
-      !! Copy the step function of an energy layer in model `i` into new arrays.
+      !! Copy step function of energy layer in model `i` into new arrays.
       ! Arguments
       integer(int32), intent(in)  :: i
          !! Model index.
@@ -273,9 +254,9 @@ contains
    end subroutine get_layer
 
    pure function layer_len(i, layer) result(n)
-      !! Return the number of step-function entries of an energy layer in model `i`.
+      !! Return step-function entry count of energy layer in model `i`.
       !!
-      !! Used to size scratch buffers.
+      !! Sizes scratch buffers.
       ! Arguments
       integer(int32), intent(in) :: i
          !! Model index.
@@ -291,10 +272,10 @@ contains
    end function layer_len
 
    subroutine get_layer_buf(i, layer, vals, idxs, n)
-      !! Copy the step function of an energy layer in model `i` into buffers.
+      !! Copy step function of energy layer in model `i` into buffers.
       !!
-      !! Same as `get_layer` without the allocation,
-      !! so the per-model, per-level loops of `build_energy_cache` stay allocation-free.
+      !! `get_layer` w/o allocation, keeping per-model, per-level loops of `build_energy_cache`
+      !! allocation-free.
       ! Arguments
       integer(int32), intent(in)  :: i
          !! Model index.
@@ -318,14 +299,14 @@ contains
    end subroutine get_layer_buf
 
    subroutine scan_levels(layer, gmax, lmax)
-      !! Find the highest gain and loss levels of an energy layer across all models.
+      !! Find highest gain and loss levels of energy layer over all models.
       ! Arguments
       integer(int32), intent(in)  :: layer
          !! Energy layer, 0 to 2.
       integer(int32), intent(out) :: gmax
          !! Highest positive level, or 0.
       integer(int32), intent(out) :: lmax
-         !! Magnitude of the most negative level, or 0.
+         !! Magnitude of most negative level, or 0.
       integer(int32) :: i, n, k
       integer(int32), allocatable :: vals(:), idxs(:)
       gmax = 0; lmax = 0
@@ -340,11 +321,10 @@ contains
    end subroutine scan_levels
 
    subroutine level_intervals(i, vals, idxs, n, L, ivlo, ivhi, m)
-      !! Find the intervals of model `i` where a step function reaches level `L`.
+      !! Find intervals of model `i` where step function reaches level `L`.
       !!
-      !! A positive `L` is reached by values at or above it,
-      !! a negative `L` by values at or below it.
-      !! The intervals are returned in cgs coordinates for the band tracer.
+      !! Positive `L` reached by values at or above it, negative by values at or below; intervals in
+      !! cgs for band tracer.
       ! Arguments
       integer(int32), intent(in)  :: i
          !! Model index.
@@ -395,13 +375,9 @@ contains
    subroutine build_conv_cache()
       !! Trace all five convection types into `conv_bands` and `conv_chains`.
       !!
-      !! Each type is traced in one pass over the models.
-      !! The exact region outline is built alongside the bands.
-      !! It holds the horizontal interface edges of every interval.
-      !! At every strip edge it also holds the symmetric difference of the
-      !! adjacent models' interval sets, the y covered on one side only.
-      !! Seams where the tracer closes and restarts bands are covered on both sides,
-      !! so they never enter the outline.
+      !! One pass over models per type, exact region outline built alongside: horizontal interface
+      !! edges of every interval, plus at each strip edge the symmetric difference of adjacent
+      !! models' interval sets. Tracer seams are covered on both sides, so never enter outline.
       type(tracer_t) :: tr
       integer(int32) :: t, i, j, m, pm, maxnc, ns
       real(real64), allocatable :: ivlo(:), ivhi(:), plo(:), phi(:), bp(:)
@@ -453,7 +429,7 @@ contains
    end subroutine build_conv_cache
 
    subroutine build_energy_cache(layer)
-      !! Trace every gain and loss level of an energy layer into `ecache(layer)`.
+      !! Trace every gain and loss level of energy layer into `ecache(layer)`.
       ! Arguments
       integer(int32), intent(in) :: layer
          !! Energy layer, 0 to 2.
@@ -499,9 +475,8 @@ contains
    subroutine build_field_cache(f)
       !! Trace every contour bin of colour field `f` into `fcache`.
       !!
-      !! The scale is the one selected by `fscale`.
-      !! Bin 1 covers the whole star and each higher bin nests inward.
-      !! The energy band tracer is reused.
+      !! Scale per `fscale`; bin 1 covers whole star, higher bins nest inward. Reuses energy band
+      !! tracer.
       ! Arguments
       integer(int32), intent(in) :: f
          !! Colour field index.

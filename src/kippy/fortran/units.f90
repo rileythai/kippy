@@ -18,20 +18,10 @@
 
 ! units.f90 -- physical units for the axes and colorbar titles
 module units
-   !! Physical units of the plot axes and the colorbar titles.
+   !! Physical units of plot axes and colorbar titles.
    !!
-   !! Every reader stores time, mass and radius in cgs.
-   !! A plotted axis then divides by the factor `UFAC` of its display unit.
-   !! Colour-field units are labels only.
-   !! The label are fetched from units given by `.kipp` header, or a unit suffix on the column name.
-   !!
-   !! Labels are typeset with negative exponents (i.e., `g/cm^3` shows as `g cm^{-3}`).
-   !! `axis_offset` is the offset of matplotlib's `ScalarFormatter`, printed in a coarser unit.
-   !! It is derived from follows `_compute_offset` in matplotlib 3.10 `ticker.py`
-   !!
-   !! axes.f90, coords.f90, cursor.f90, draw.f90 and kipp.f90 scale and label the axes with it.
-   !! mesaload.f90 converts `.kipp` axis columns to cgs with `unit_id` and `UFAC`.
-   !! convbuild.f90 re-exports the solar constants and the year.
+   !! Readers store time, mass and radius in cgs; an axis divides by its display unit's `UFAC`.
+   !! Colour-field units are labels only, from `.kipp` header or column-name suffix.
 
    use iso_c_binding, only: c_double
    use typedef, only: int32, int64, real64
@@ -47,14 +37,14 @@ module units
       !! Gregorian year (s).
 
    integer(int32), parameter, public :: DIM_TIME = 1, DIM_MASS = 2, DIM_LENGTH = 3
-      !! Dimension codes of `UDIM`: time, mass and length.
+      !! Dimension codes of `UDIM`: time, mass, length.
    integer(int32), parameter, public :: NUNITS = 15
       !! Number of display units.
    character(len=4), parameter, public :: UNAME(NUNITS) = [character(len=4) :: &
       's', 'min', 'hr', 'd', 'yr', 'kyr', 'Myr', 'Gyr', &
       'g', 'kg', 'Msun', &
       'cm', 'm', 'km', 'Rsun']
-      !! Unit names as the `units` command takes them (docs/commands.md).
+      !! Unit names as `units` command takes them (docs/commands.md).
    integer(int32), parameter, public :: UDIM(NUNITS) = [ &
       DIM_TIME, DIM_TIME, DIM_TIME, DIM_TIME, DIM_TIME, DIM_TIME, DIM_TIME, DIM_TIME, &
       DIM_MASS, DIM_MASS, DIM_MASS, &
@@ -72,14 +62,16 @@ module units
       !! Axis label of each unit in giza markup.
    integer(int32), parameter :: IYR = 5, IGYR = 8
       !! `UNAME` indices of `yr` and `Gyr`.
-      !! The units from `yr` to `Gyr` step by 1000, so an offset moves between them exactly.
+      !!
+      !! Units `yr` to `Gyr` step by 1000, so an offset moves between them exactly.
 
    integer(int32), parameter :: NSUF = 8
       !! Number of unit suffixes.
    character(len=7), parameter :: SUF(NSUF) = [character(len=7) :: &
       'erg_g_s', 'erg_s', 'gcc', 'yr', 'cm', 'K', 'g', 's']
-      !! Column-name suffixes read as units when the header states none.
-      !! Longest first, so `_erg_g_s` is tried before `_s`.
+      !! Column-name suffixes read as units when header states none.
+      !!
+      !! Longest first, so `_erg_g_s` tried before `_s`.
    character(len=7), parameter :: SUFUNIT(NSUF) = [character(len=7) :: &
       'erg/g/s', 'erg/s', 'g/cc', 'yr', 'cm', 'K', 'g', 's']
       !! Unit of each suffix in `SUF`.
@@ -93,11 +85,11 @@ module units
       'Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', &
       'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi', 'Omicron', 'Pi', 'Rho', &
       'Sigma', 'Tau', 'Phi', 'Chi', 'Psi', 'Omega']
-      !! giza's Greek-letter tokens (giza-token-remapper.h), written `\<name>`.
+      !! giza Greek-letter tokens (giza-token-remapper.h), written `\<name>`.
 
    interface
       pure function c_fmod(x, y) bind(C, name='fmod') result(r)
-         !! Return the floating-point remainder of `x/y`, with C `fmod`.
+         !! Return floating-point remainder of `x/y`, via C `fmod`.
          import :: c_double
          real(c_double), value :: x
             !! Dividend.
@@ -112,10 +104,9 @@ module units
 contains
 
    pure function unit_id(name) result(k)
-      !! Return the `UNAME` index of a unit name, or 0 when it is unknown.
+      !! Return `UNAME` index of unit name, or 0 if unknown.
       !!
-      !! Names match in any case.
-      !! A few spelled-out aliases are accepted (`sec`, `hour`, `day`, `year`, `msol`, `rsol`).
+      !! Case-insensitive; also takes aliases `sec`, `hour`, `day`, `year`, `msol`, `rsol`.
       ! Arguments
       character(len=*), intent(in) :: name
          !! Unit name.
@@ -137,10 +128,9 @@ contains
    end function unit_id
 
    pure function auto_time_unit(span_sec) result(k)
-      !! Return the largest time unit in which a span is at least 1.
+      !! Return largest time unit in which span is at least 1.
       !!
-      !! The result is a `UNAME` index from `s` to `Gyr`, and `s` when no unit fits.
-      !! This is the automatic time unit of `units auto` (docs/commands.md).
+      !! `UNAME` index from `s` to `Gyr`, `s` if none fits. Unit of `units auto` (docs/commands.md).
       ! Arguments
       real(real64), intent(in) :: span_sec
          !! Visible time span (s).
@@ -152,20 +142,18 @@ contains
    end function auto_time_unit
 
    pure subroutine quantity_label(name, unit, base, ulab)
-      !! Split a column into the two parts of its colorbar title.
+      !! Split column into the two parts of its colorbar title.
       !!
-      !! The base is the name without its unit suffix.
-      !! An underscore shows as a space, since giza has no escape for it.
-      !! A Greek-letter name shows as its glyph.
-      !! The unit is typeset for giza, and blank when there is none.
-      !! A unit the header states wins over the suffix ("Unit recognition", docs/formats.md).
+      !! Base: name minus unit suffix, `_` as space (giza has no escape), Greek-letter name as
+      !! glyph. Unit: header's unit, else suffix, typeset for giza, blank if none ("Unit
+      !! recognition", docs/formats.md).
       ! Arguments
       character(len=*), intent(in) :: name
          !! Column name.
       character(len=*), intent(in) :: unit
-         !! Unit the header states for the column, blank if none.
+         !! Unit header states for column, blank if none.
       character(len=*), intent(out) :: base
-         !! Title text of the name, in giza markup.
+         !! Title text of name, in giza markup.
       character(len=*), intent(out) :: ulab
          !! Typeset unit, blank if none.
       character(len=len(name)) :: b
@@ -191,14 +179,13 @@ contains
    end subroutine quantity_label
 
    pure function unit_tex(u) result(t)
-      !! Typeset a unit with negative exponents.
+      !! Typeset unit w/ negative exponents.
       !!
-      !! `a/b^n/c` becomes `a b^{-n} c^{-1}`.
-      !! `cc` reads as `cm^3`, and `Msun`, `Rsun` and `Lsun` become solar symbols.
-      !! A unit of any other form is returned as written.
+      !! `a/b^n/c` -> `a b^{-n} c^{-1}`, `cc` -> `cm^3`, `Msun`, `Rsun`, `Lsun` -> solar symbols.
+      !! Other forms returned as written.
       ! Arguments
       character(len=*), intent(in) :: u
-         !! Unit as the header or suffix gives it.
+         !! Unit as header or suffix gives it.
       character(len=96) :: t
       character(len=64) :: rest, seg, base, ex
       character(len=*), parameter :: LETTERS = &
@@ -260,24 +247,23 @@ contains
    end function unit_tex
 
    pure subroutine axis_offset(lo, hi, k, off, txt)
-      !! Find matplotlib's `ScalarFormatter` offset of a linear time axis.
+      !! Find matplotlib `ScalarFormatter` offset of linear time axis.
       !!
-      !! The offset is taken from the view limits rather than the tick positions.
-      !! It is the highest decade at which `lo` and `hi` agree.
-      !! It is used only when it saves at least four digits.
-      !! The text is in the largest of `yr` to `Gyr` in which the offset is at least 1
-      !! when the ticks are in one of those, else in the tick unit (`offset`, docs/commands.md).
+      !! Follows `_compute_offset` (matplotlib 3.10 `ticker.py`) but from view limits, not tick
+      !! positions: highest decade where `lo` and `hi` agree, used only if it saves at least four
+      !! digits. Text in largest of `yr` to `Gyr` where offset is at least 1 if ticks are in one of
+      !! those, else tick unit (`offset`, docs/commands.md).
       ! Arguments
       real(real64), intent(in) :: lo
-         !! Lower view limit, in the tick unit.
+         !! Lower view limit, in tick unit.
       real(real64), intent(in) :: hi
-         !! Upper view limit, in the tick unit.
+         !! Upper view limit, in tick unit.
       integer(int32), intent(in) :: k
          !! `UNAME` index of the tick unit.
       real(real64), intent(out) :: off
-         !! Offset in the tick unit, 0 when no offset applies.
+         !! Offset in tick unit, 0 if none applies.
       character(len=*), intent(out) :: txt
-         !! Offset as matplotlib shows it (`+...` and a unit label), blank when none applies.
+         !! Offset as matplotlib shows it (`+...` and unit label), blank if none applies.
       real(real64) :: amin, amax, sgn, oommax, oom, n
       character(len=24) :: digits
       integer(int32) :: u, q
@@ -318,10 +304,9 @@ contains
    end subroutine axis_offset
 
    pure function floordiv(a, b) result(f)
-      !! Return Python's float floor division `a // b` for `a, b > 0`.
+      !! Return Python float floor division `a // b` for `a, b > 0`.
       !!
-      !! It follows CPython `float_floor_div`, so `axis_offset` picks the EXACT same 
-      !! decades as matplotlib.
+      !! Follows CPython `float_floor_div`, so `axis_offset` picks exactly matplotlib's decades.
       ! Arguments
       real(real64), intent(in) :: a
          !! Dividend.
@@ -334,9 +319,9 @@ contains
    end function floordiv
 
    pure function fmt_number(digits, p) result(s)
-      !! Format `digits x 10^p` as `giza_format_number` writes it in its automatic form.
+      !! Format `digits x 10^p` as `giza_format_number` writes it in automatic form.
       !!
-      !! This handles mantissas beyond giza's C `int`.
+      !! Handles mantissas beyond giza's C `int`.
       ! Arguments
       character(len=*), intent(in) :: digits
          !! Decimal digits of the mantissa.
@@ -376,7 +361,7 @@ contains
    end function fmt_number
 
    pure function lower(s) result(t)
-      !! Return `s` with ASCII upper-case letters lowered.
+      !! Return `s` w/ ASCII letters lower-cased.
       ! Arguments
       character(len=*), intent(in) :: s
          !! Input string.

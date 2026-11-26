@@ -18,16 +18,10 @@
 
 ! kipp_state.f90 -- viewer state shared by the kipp modules
 module kipp_state
-   !! Viewer state that more than one kipp module reads or writes.
+   !! Viewer state shared by more than one kipp module.
    !!
-   !! - `st`: the viewer settings. The REPL (`convview`) and the cursor keys
-   !!   write them; every render reads them.
-   !! - `nmodels`, `xval`, `xedge`, `ystar`: one entry per loaded model,
-   !!   rebuilt from `convdata%data` on load and when the axis quantity or
-   !!   time unit changes.
-   !! - `chs`: the giza character height of the render in progress.
-   !!
-   !! State used by only one module lives in that module.
+   !! `st` written by REPL and cursor keys, read by every render. Per-model axes (`nmodels`, `xval`,
+   !! `xedge`, `ystar`) rebuilt on load and on axis-quantity or time-unit change.
 
    use typedef, only: int32, real64
 
@@ -43,37 +37,35 @@ module kipp_state
       character(len=8)  :: yaxis = 'mass'
          !! y-axis quantity, `'mass'` or `'radius'`.
       character(len=4)  :: tunit = 'yr'
-         !! Display unit of the time axis, a `units%UNAME` entry.
+         !! Time-axis display unit, a `units%UNAME` entry.
       character(len=4)  :: munit = 'Msun'
-         !! Display unit of the mass axis, a `units%UNAME` entry.
+         !! Mass-axis display unit, a `units%UNAME` entry.
       character(len=4)  :: runit = 'Rsun'
-         !! Display unit of the radius axis, a `units%UNAME` entry.
+         !! Radius-axis display unit, a `units%UNAME` entry.
       logical           :: tauto = .true.
-         !! The time unit follows the visible span on each render (`units auto`).
+         !! Time unit follows visible span on each render (`units auto`).
       logical           :: xoffset = .true.
-         !! Label a linear time axis relative to a matplotlib-style offset.
+         !! Label linear time axis relative to matplotlib-style offset.
       logical           :: xlog = .false.
          !! Logarithmic x axis.
       logical           :: ylog = .false.
          !! Logarithmic y axis.
       real(real64)      :: xmin = 0, xmax = 0, ymin = 0, ymax = 0
-         !! View limits. x is in the units of `xval`, y in `munit` or
-         !! `runit`. Both stay linear values on a logarithmic axis.
+         !! View limits. x in `xval` units, y in `munit` or `runit`; linear values even on log axes.
       logical           :: xauto = .true., yauto = .true.
-         !! Limits follow the data: `kipp_autoscale` resets only these axes.
+         !! Limits follow data: `kipp_autoscale` resets only these axes.
       character(len=32) :: cfield = 'epsnuc'
          !! Colour field: `convtype`, `epsnuc`, `neu` or a column field name.
       logical           :: cflip = .false.
-         !! Show the column field in its non-default linear or log scale.
+         !! Show column field in its non-default linear/log scale.
       character(len=16) :: cmap = 'teal'
          !! Colormap of column fields, a `CMAP_NAMES` entry; `_r` reverses it.
       character(len=64) :: device = '/xw'
          !! giza device: `/xw` when `$DISPLAY` is set, else `/png`.
       character(len=64) :: prefix = 'convview'
-         !! File name prefix of the `/png` device: each render writes `<prefix>.png`.
+         !! `/png` file name prefix: each render writes `<prefix>.png`.
       logical           :: interactive = .true.
-         !! Renders reuse one open `/xw` window; otherwise each opens,
-         !! writes and closes a PNG.
+         !! Renders reuse one open `/xw` window; otherwise each opens, writes and closes a PNG.
       logical           :: showmodels = .true.
          !! Draw the model-density strip (`models on|off`).
       logical           :: showgrid = .false.
@@ -83,20 +75,19 @@ module kipp_state
    end type kstate_t
 
    type(kstate_t) :: st
-      !! The viewer settings.
+      !! Viewer settings.
 
    real(real64) :: chs = 1.d0
-      !! giza character height of the render in progress: 1, or `PDF_CHS`
-      !! during a PDF save.
+      !! giza character height of current render: 1, or `PDF_CHS` during PDF save.
 
    integer(int32) :: nmodels = 0
-      !! Number of loaded models, `size(convdata%data)`.
+      !! Loaded model count, `size(convdata%data)`.
    real(real64), allocatable :: xval(:)
       !! x coordinate of each model: time in `st%tunit`, or model number.
    real(real64), allocatable :: xedge(:)
-      !! Model strip edges (`nmodels + 1`): midpoints between successive
-      !! `xval`, the two ends half a step outside.
+      !! Model strip edges (`nmodels + 1`): midpoints of successive `xval`, ends half a step
+      !! outside.
    real(real64), allocatable :: ystar(:)
-      !! Outer mass or radius of each model (cgs), following `st%yaxis`.
+      !! Outer mass or radius of each model (cgs), per `st%yaxis`.
 
 end module kipp_state

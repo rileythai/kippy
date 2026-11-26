@@ -18,9 +18,9 @@
 
 ! typedef.f90 -- integer and real kinds
 module typedef
-  !! Integer and real kinds used by every kippy module.
+  !! Integer and real kinds for every kippy module.
   !!
-  !! Each kind is selected by its decimal range.
+  !! Each kind selected by decimal range.
 
   implicit none
 

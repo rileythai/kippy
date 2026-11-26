@@ -20,9 +20,8 @@
 module convload
   !! Reader of KEPLER `.cnv` files into `convdata%data`.
   !!
-  !! The file layout and its record versions are described in docs/cnvfiles.md.
-  !! mesaload.f90 calls `loadconv` for any path that matches no other input format.
-  !! mesaload.f90 and monload.f90 call `sort_models` on their own records.
+  !! Layout and record versions in docs/cnvfiles.md. `loadconv` is mesaload.f90's fallback for paths
+  !! matching no other format; mesaload.f90 and monload.f90 also call `sort_models`.
 
   use typedef, only: &
        int32, real64
@@ -38,17 +37,15 @@ module convload
        !! Initial capacity of `data`, in models.
   real(kind=real64), parameter :: &
        cnv_fac = 0.5d0 * (sqrt(5.d0) + 1.d0)
-       !! Growth factor of `data` when it is full, the golden ratio.
+       !! Growth factor of full `data`, golden ratio.
 
 contains
 
   subroutine loadconv(namecnv, ifirst, ilast)
-    !! Load the models of a `.cnv` file into `data`.
+    !! Load models of `.cnv` file into `data`.
     !!
-    !! Each record is decoded by its own version with `loadconv_record`.
-    !! Records are skipped up to the first one with a model number of at least `ifirst`.
-    !! Reading stops at the end of the file or at the first model number above `ilast`.
-    !! The models are then sorted with `sort_models`.
+    !! Decodes each record by version (`loadconv_record`), skips to first model number of at least
+    !! `ifirst`, stops at end of file or first model number above `ilast`, then calls `sort_models`.
 
     use convdata, only: &
          convtype, data
@@ -133,11 +130,11 @@ contains
 
 
   subroutine sort_models()
-    !! Keep the last record of each model number in `data`, in ascending model order.
+    !! Keep last record of each model number in `data`, in ascending order.
     !!
-    !! KEPLER appends records when a run restarts from an earlier dump ("Models and time", docs/cnvfiles.md).
-    !! A file can then hold overlapping model ranges, where model number and time jump backwards mid-file.
-    !! The band tracer, the strip edges and the bisection rely on strictly increasing model numbers.
+    !! KEPLER appends records on restart from an earlier dump, so a file can hold overlapping model
+    !! ranges w/ model number and time jumping back ("Models and time", docs/cnvfiles.md). Band
+    !! tracer, strip edges and bisection need strictly increasing model numbers.
 
     use convdata, only: &
          convtype, data
@@ -215,14 +212,11 @@ contains
 
 
   function loadconv_record(iunit) result(cnv)
-    !! Decode the next record with the decoder of its version.
+    !! Decode next record w/ its version's decoder.
     !!
-    !! Versions 10600 to 10699 share one layout, with `ladv` after `rncoord` and no `toffset`.
-    !! Both layouts hold `aw` and `angltv` as 3-vectors.
-    !! Version 10700 and later add `toffset` after `dt`.
-    !! They also move `ladv` into the early header, after `ncoord` and before `idx_kind_len`.
-    !! Versions below 10600 have no test files, so they stop with an error.
-    !! At the end of the file the result has `nvers = 0`.
+    !! 10600 to 10699: `ladv` after `rncoord`, no `toffset`. 10700 and later: `toffset` after `dt`,
+    !! `ladv` in early header between `ncoord` and `idx_kind_len`. Both hold `aw`, `angltv` as
+    !! 3-vectors. Below 10600 (no test files) stops w/ error; end of file gives `nvers = 0`.
 
     use typedef, only: &
          int32
@@ -233,7 +227,7 @@ contains
     ! Arguments
     integer(kind=int32), intent(IN) :: &
          iunit
-         !! Unit of the open `.cnv` file, positioned at a record.
+         !! Unit of open `.cnv` file, positioned at a record.
 
     type(convtype) :: &
          cnv
@@ -265,11 +259,8 @@ contains
   function loadconv_10600(iunit) result(cnv)
     !! Decode one record of version 10600 to 10699.
     !!
-    !! The record is read three times.
-    !! The header gives the array sizes.
-    !! A second read reaches `ladv`, which gives `nadv`.
-    !! A third read takes the full record.
-    !! At the end of the file the result has `nvers = 0`.
+    !! Reads record three times: header for array sizes, again to `ladv` for `nadv`, then in full.
+    !! End of file gives `nvers = 0`.
 
     use typedef, only: &
          int32
@@ -281,7 +272,7 @@ contains
     ! Arguments
     integer(kind=int32), intent(IN):: &
          iunit
-         !! Unit of the open `.cnv` file, positioned at the record.
+         !! Unit of open `.cnv` file, positioned at record.
 
     type(convtype) :: &
          cnv
@@ -478,7 +469,7 @@ contains
   function loadconv_10700(iunit) result(cnv)
     !! Decode one record of version 10700 or later.
     !!
-    !! The record is read twice, once for the header and once in full.
+    !! Reads record twice: header, then in full.
 
     use typedef, only: &
          int32
@@ -490,7 +481,7 @@ contains
     ! Arguments
     integer(kind=int32), intent(IN):: &
          iunit
-         !! Unit of the open `.cnv` file, positioned at the record.
+         !! Unit of open `.cnv` file, positioned at record.
 
     type(convtype) :: &
          cnv

@@ -20,20 +20,9 @@
 module cursor
    !! Cursor mode and window input.
    !!
-   !! - `kipp_interact` runs cursor mode, one `kipp_action` per key press or click in the /xw window.
-   !! - `kipp_action` applies one cursor key at a world position.
-   !!   The keys zoom, pan, select ranges, save snapshots, toggle overlays and undo view changes.
-   !! - `kipp_wait_input` blocks at the REPL prompt until stdin or the plot window has input.
-   !! - `kipp_window_center` gives the view centre, the default position of a scripted key.
-   !! - `print_cell` prints the model and zone cell under the cursor.
-   !!
-   !! The "view history" `views` holds the view before each view change, for the `u` key.
-   !! `clear_views` empties it.
-   !!
-   !! kipp.f90 re-exports `kipp_interact`, `kipp_action`, `kipp_wait_input` and `kipp_window_center`.
-   !! Its `kipp_rebuild` calls `clear_views` after an axis change.
-   !! The keys write the view limits and display toggles of `st` in kipp_state.f90, then render through draw.f90.
-   !! This module holds the view history and the snapshot counter.
+   !! "View history" `views` holds the view before each view change, for the `u` key; `kipp_rebuild`
+   !! empties it via `clear_views` after an axis change. Keys write `st` view limits and toggles,
+   !! then render through draw.f90.
 
    use, intrinsic :: iso_fortran_env, only: output_unit
    use iso_c_binding, only: c_int
@@ -55,16 +44,16 @@ module cursor
 
    interface
       function c_getpid() bind(C, name='getpid') result(pid)
-         !! Return the process id, with POSIX `getpid`.
+         !! Return process id, via POSIX `getpid`.
          !!
-         !! The temporary PNG of the `p` clipboard copy is named after it.
+         !! Names temporary PNG of `p` clipboard copy.
          import :: c_int
          integer(c_int) :: pid
       end function c_getpid
       function c_isatty(fd) bind(C, name='isatty') result(tty)
-         !! Test a file descriptor for a terminal, with POSIX `isatty`.
+         !! Test file descriptor for a terminal, via POSIX `isatty`.
          !!
-         !! The result is nonzero for a terminal.
+         !! Nonzero for a terminal.
          import :: c_int
          integer(c_int), value :: fd
             !! File descriptor to test.
@@ -94,15 +83,15 @@ module cursor
       !! Ctrl-C.
 
    integer(int32) :: nsnap = 0
-      !! Number of the last numbered snapshot saved from cursor mode.
+      !! Number of last numbered snapshot saved from cursor mode.
 
    type :: view_t
-      !! One view of the view history.
+      !! View of view history.
       !!
-      !! Limits are kept in seconds (or model number) and cgs,
-      !! because the auto time unit rescales `st%xmin` and `st%xmax`.
+      !! Limits kept in seconds (or model number) and cgs, since auto time unit rescales `st%xmin`
+      !! and `st%xmax`.
       real(real64) :: lim(4)
-         !! View limits, xmin, xmax, ymin and ymax.
+         !! View limits: xmin, xmax, ymin, ymax.
       logical      :: xauto, yauto
          !! Auto-scale flags of x and y in this view.
    end type view_t
@@ -112,11 +101,10 @@ module cursor
 contains
 
    subroutine kipp_interact()
-      !! Run cursor mode in the /xw window.
+      !! Run cursor mode in /xw window.
       !!
-      !! Each key press or mouse click acts at the world coordinates giza reports for the cursor,
-      !! so keys act "where the mouse is".
-      !! Control returns to the REPL on `q`, Esc or Ctrl-C.
+      !! Each key press or click acts at the world coords giza reports for the cursor ("where the
+      !! mouse is"). Returns to REPL on `q`, Esc or Ctrl-C.
       real(real64) :: x, y
       character(len=1) :: ch
       integer :: ierr
@@ -144,12 +132,11 @@ contains
    end subroutine kipp_interact
 
    integer function kipp_wait_input()
-      !! Block at the REPL prompt until stdin or the plot window has input.
+      !! Block at REPL prompt until stdin or plot window has input.
       !!
-      !! The result is 0 for stdin input and 1 for a click in the plot window.
-      !! It is -1 when the window's close button is pressed, now or in cursor mode.
-      !! Only a terminal stdin is watched.
-      !! gfortran buffers piped stdin, so a poll could miss lines it has already read.
+      !! 0 for stdin, 1 for click in plot window, -1 when window close button is pressed (now or in
+      !! cursor mode). Watches terminal stdin only: gfortran buffers piped stdin, so a poll could
+      !! miss lines already read.
       kipp_wait_input = 0
       if (.not. st%interactive .or. st%devid <= 0) return
       if (c_isatty(0_c_int) == 0) return
@@ -161,16 +148,15 @@ contains
    subroutine kipp_action(ch, x, y, done)
       !! Apply one cursor key `ch` at world position (`x`, `y`).
       !!
-      !! World coordinates are those of coords.f90, as giza reports them for the cursor.
-      !! Shared by the interactive loop and the scripted REPL `key` command (`KIPP_SCRIPT`).
-      !! Each view change except `u` pushes the old view onto the view history.
+      !! Shared by interactive loop and scripted REPL `key` command (`KIPP_SCRIPT`). Each view
+      !! change except `u` pushes old view onto view history.
       ! Arguments
       character(len=1), intent(in) :: ch
          !! Key or mouse event character, as giza reports it.
       real(real64), intent(in) :: x
-         !! Cursor x, in world coordinates.
+         !! Cursor x, in world coords.
       real(real64), intent(in) :: y
-         !! Cursor y, in world coordinates.
+         !! Cursor y, in world coords.
       logical, intent(out) :: done
          !! Set when `ch` asks to leave cursor mode.
       real(real64) :: xa, ya, x2, y2
@@ -283,7 +269,7 @@ contains
    end subroutine kipp_action
 
    function view_now() result(v)
-      !! Return the current view as a `view_t`.
+      !! Return current view as `view_t`.
       type(view_t) :: v
       real(real64) :: fx
       fx = merge(UFAC(unit_id(st%tunit)), 1.d0, st%xaxis == 'time')
@@ -292,7 +278,7 @@ contains
    end function view_now
 
    subroutine set_view(v)
-      !! Restore a view of the view history.
+      !! Restore view from view history.
       ! Arguments
       type(view_t), intent(in) :: v
          !! View to restore.
@@ -309,20 +295,20 @@ contains
    end subroutine clear_views
 
    subroutine kipp_window_center(cx, cy)
-      !! Give the centre of the current view, in world coordinates.
+      !! Give centre of current view, in world coords.
       !!
-      !! This is the default position of a scripted key.
+      !! Default position of a scripted key.
       ! Arguments
       real(real64), intent(out) :: cx
-         !! x of the view centre.
+         !! x of view centre.
       real(real64), intent(out) :: cy
-         !! y of the view centre.
+         !! y of view centre.
       cx = 0.5d0*(xtrans(st%xmin) + xtrans(st%xmax))
       cy = 0.5d0*(ytrans2(st%ymin) + ytrans2(st%ymax))
    end subroutine kipp_window_center
 
    subroutine cursor_help()
-      !! Print the cursor key reference.
+      !! Print cursor key reference.
       print '(a)', 'cursor mode (keys act at the mouse position in the plot window):'
       print '(a)', '  left-click       drag rectangle zoom     x / y  select x / y range'
       print '(a)', '  scroll / z / Z   zoom in / out           right-click  zoom out'
@@ -335,15 +321,15 @@ contains
    end subroutine cursor_help
 
    subroutine print_cell(wx, wy)
-      !! Print the model and zone cell at world position (`wx`, `wy`).
+      !! Print model and zone cell at world position (`wx`, `wy`).
       !!
-      !! The line gives the model, time, zone faces, convection type and the selected colour value as drawn.
-      !! A column field prints its bin's value range, since only the bin is stored.
+      !! Gives model, time, zone faces, convection type and selected colour value as drawn; a column
+      !! field prints its bin's value range, since only the bin is stored.
       ! Arguments
       real(real64), intent(in) :: wx
-         !! Cursor x, in world coordinates.
+         !! Cursor x, in world coords.
       real(real64), intent(in) :: wy
-         !! Cursor y, in world coordinates.
+         !! Cursor y, in world coords.
       character(len=14), parameter :: TYPE_NAME(0:NCONVTYPES) = [character(len=14) :: &
          'radiative', 'neutral', 'overshoot', 'semiconvective', 'convective', 'thermohaline']
       character(len=256) :: line
@@ -439,14 +425,14 @@ contains
    end subroutine print_cell
 
    subroutine set_xrange_w(a, b)
-      !! Set the x view limits from two world coordinates, in either order.
+      !! Set x view limits from two world coords, in either order.
       !!
-      !! A degenerate selection, such as a double click in place, is ignored.
+      !! Ignores degenerate selections (e.g. double click in place).
       ! Arguments
       real(real64), intent(in) :: a
-         !! One end of the selection.
+         !! One end of selection.
       real(real64), intent(in) :: b
-         !! Other end of the selection.
+         !! Other end of selection.
       real(real64) :: lo, hi
       lo = min(a, b); hi = max(a, b)
       if (hi <= lo) return
@@ -455,14 +441,14 @@ contains
    end subroutine set_xrange_w
 
    subroutine set_yrange_w(a, b)
-      !! Set the y view limits from two world coordinates, in either order.
+      !! Set y view limits from two world coords, in either order.
       !!
-      !! A degenerate selection is ignored.
+      !! Ignores degenerate selections.
       ! Arguments
       real(real64), intent(in) :: a
-         !! One end of the selection.
+         !! One end of selection.
       real(real64), intent(in) :: b
-         !! Other end of the selection.
+         !! Other end of selection.
       real(real64) :: lo, hi
       lo = min(a, b); hi = max(a, b)
       if (hi <= lo) return
@@ -473,15 +459,14 @@ contains
    subroutine zoom_at(cx, cy, f)
       !! Rescale both axes by `f` about a world position.
       !!
-      !! `f` < 1 zooms in and `f` > 1 zooms out.
-      !! The data under the cursor stays put.
+      !! `f` < 1 zooms in, `f` > 1 out; data under cursor stays in place.
       ! Arguments
       real(real64), intent(in) :: cx
-         !! x of the fixed point, in world coordinates.
+         !! x of fixed point, in world coords.
       real(real64), intent(in) :: cy
-         !! y of the fixed point, in world coordinates.
+         !! y of fixed point, in world coords.
       real(real64), intent(in) :: f
-         !! Factor applied to the world-space spans.
+         !! Factor applied to world-space spans.
       real(real64) :: a, b
       a = xtrans(st%xmin); b = xtrans(st%xmax)
       st%xmin = inv_x(cx + (a - cx)*f)
@@ -493,12 +478,12 @@ contains
    end subroutine zoom_at
 
    subroutine pan_frac(fx, fy)
-      !! Shift the view by a fraction of the current world-space span.
+      !! Shift view by a fraction of current world-space span.
       ! Arguments
       real(real64), intent(in) :: fx
-         !! Shift along x, as a fraction of the x span.
+         !! Shift along x, as fraction of x span.
       real(real64), intent(in) :: fy
-         !! Shift along y, as a fraction of the y span.
+         !! Shift along y, as fraction of y span.
       real(real64) :: a, b, d
       if (fx /= 0.d0) then
          a = xtrans(st%xmin); b = xtrans(st%xmax); d = (b - a)*fx
@@ -513,12 +498,12 @@ contains
    end subroutine pan_frac
 
    subroutine center_at(cx, cy)
-      !! Pan so a world position becomes the view centre.
+      !! Pan so a world position becomes view centre.
       ! Arguments
       real(real64), intent(in) :: cx
-         !! x of the new centre, in world coordinates.
+         !! x of new centre, in world coords.
       real(real64), intent(in) :: cy
-         !! y of the new centre, in world coordinates.
+         !! y of new centre, in world coords.
       real(real64) :: a, b, d
       a = xtrans(st%xmin); b = xtrans(st%xmax)
       d = cx - 0.5d0*(a + b)

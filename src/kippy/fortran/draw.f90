@@ -20,22 +20,9 @@
 module draw
    !! giza devices and scene drawing.
    !!
-   !! - `kipp_choose_device`, `kipp_render`, `kipp_save` and `kipp_close` open, draw to and close the giza device.
-   !! - `draw_scene` draws one frame: colour layer, convection hatch, grid, surface, axes,
-   !!   colorbar and model-number strip.
-   !! - `draw_band`, `fill_bandset_linked` and `draw_chainset` emit the cached bands and outlines
-   !!   of layers.f90 through the polygon scratch `epx`, `epy`.
-   !! - `clamp_view` keeps the view limits inside the data.
-   !!
-   !! The "emit clamp box" bounds every vertex handed to giza, in world coordinates.
-   !! It reaches `CLAMP_SPANS` window spans past the view on each side.
-   !! The "visible range" `ivis0`..`ivis1` is the models whose strips overlap the view.
-   !! `draw_scene` sets both on each render.
-   !!
-   !! kipp.f90 re-exports the four device routines.
-   !! The cursor keys of cursor.f90 call `kipp_render` and `kipp_save`.
-   !! This module writes the device fields and view limits of `st`, `chs` of kipp_state.f90 and `xoff` of coords.f90.
-   !! It holds the per-render state: the clamp box, the visible range, the time offset label and the scratch.
+   !! "Emit clamp box" bounds every vertex handed to giza, `CLAMP_SPANS` window spans past view on
+   !! each side; "visible range" `ivis0`..`ivis1` is models whose strips overlap view. `draw_scene`
+   !! sets both each render, and writes `st` device fields and view limits, `chs` and `coords%xoff`.
 
    use iso_c_binding, only: c_int, c_double, c_char, c_null_char
    use typedef, only: int32, real64
@@ -61,22 +48,22 @@ module draw
       ! giza's own giza_box binding narrows the tick steps to single precision,
       ! which shifts ticks off the labels on deep zooms of large values
       subroutine c_giza_box(xopt, xtick, nxsub, yopt, ytick, nysub) bind(C, name='giza_box')
-         !! Draw the frame, ticks and tick labels of the plot box.
+         !! Draw frame, ticks and tick labels of plot box.
          !!
          !! Binds giza's C `giza_box` directly.
          import :: c_char, c_double, c_int
          character(kind=c_char), dimension(*), intent(in) :: xopt
-            !! x axis options, a null-terminated `giza_box` option string.
+            !! x axis options, null-terminated `giza_box` option string.
          real(c_double), value :: xtick
-            !! Major tick step of the x axis, in world coordinates.
+            !! x major tick step, in world coords.
          integer(c_int), value :: nxsub
-            !! Number of minor tick intervals per x step.
+            !! Minor tick intervals per x step.
          character(kind=c_char), dimension(*), intent(in) :: yopt
-            !! y axis options, a null-terminated `giza_box` option string.
+            !! y axis options, null-terminated `giza_box` option string.
          real(c_double), value :: ytick
-            !! Major tick step of the y axis, in world coordinates.
+            !! y major tick step, in world coords.
          integer(c_int), value :: nysub
-            !! Number of minor tick intervals per y step.
+            !! Minor tick intervals per y step.
       end subroutine c_giza_box
    end interface
 
@@ -87,40 +74,43 @@ module draw
                                 3, &   ! SEMICONV
                                 2, &   ! CONVECTIVE
                                 6]     ! THERMOHALINE
-      !! giza colour index of each convection type, by its code in convdata.f90.
+      !! giza colour index of each convection type, by convdata.f90 code.
 
    real(real64), parameter :: PDF_WIDTH = 3.5d0
-      !! Page width of a PDF save, in inches.
-      !! The page is one column wide, at the golden ratio.
+      !! PDF save page width, in inches.
+      !!
+      !! One column wide, golden ratio.
    real(real64), parameter :: PDF_CHS = 2.0d0
-      !! Character height of a PDF save.
-      !! giza text scales with page height, so this keeps it legible on the small page.
+      !! PDF save character height.
+      !!
+      !! giza text scales w/ page height, so this keeps it legible on small page.
 
    character(len=64) :: xofftxt = ''
-      !! Label of the time offset `xoff` of coords.f90, set on each render by `draw_scene`.
+      !! Label of `coords%xoff`, set each render by `draw_scene`.
 
    real(real64), allocatable :: epx(:), epy(:)
       !! Polygon scratch for emitted vertices, grown by `ensure_scratch`.
 
    real(real64), parameter :: CLAMP_SPANS = 1.0d3
-      !! Reach of the emit clamp box past each side of the view, in window spans.
+      !! Emit clamp box reach past each side of view, in window spans.
    real(real64) :: exlo = -huge(1.d0), exhi = huge(1.d0)
-      !! x limits of the emit clamp box, in world coordinates.
+      !! x limits of emit clamp box, in world coords.
    real(real64) :: eylo = -huge(1.d0), eyhi = huge(1.d0)
-      !! y limits of the emit clamp box, in world coordinates.
+      !! y limits of emit clamp box, in world coords.
 
    integer(int32) :: ivis0 = 1, ivis1 = huge(1_int32)
-      !! First and last model of the visible range.
-      !! Band emission, the surface line and the grid are clipped to it,
-      !! so zoomed redraws scale with the models on screen, not the whole file.
+      !! First and last model of visible range.
+      !!
+      !! Band emission, surface line and grid clipped to it, so zoomed redraws scale w/ models on
+      !! screen, not whole file.
 
 contains
 
    subroutine kipp_render()
-      !! Render the scene to the current device.
+      !! Render scene to current device.
       !!
-      !! An interactive device (/xw) opens once and gets a new page on each render.
-      !! A file device (/png etc) opens fresh on each render so the output file is stable.
+      !! Interactive device (/xw) opens once, new page per render; file device (/png etc) opens
+      !! fresh per render so output file is stable.
       logical :: newdev
       if (st%interactive) then
          newdev = st%devid <= 0
@@ -156,13 +146,12 @@ contains
    end subroutine kipp_render
 
    subroutine kipp_save(name)
-      !! Render once to a named PNG, or a PDF for a `.pdf` name.
+      !! Render once to named PNG, or PDF for `.pdf` name.
       !!
-      !! The current device is left as it was.
-      !! A PDF page is `PDF_WIDTH` wide, with text at `PDF_CHS`.
+      !! Leaves current device as it was; PDF page `PDF_WIDTH` wide, text at `PDF_CHS`.
       ! Arguments
       character(len=*), intent(in) :: name
-         !! Output file name, given `.png` unless it ends in `.png` or `.pdf`.
+         !! Output file name; `.png` appended unless it ends in `.png` or `.pdf`.
       character(len=256) :: pfx
       character(len=4) :: ext
       integer :: id, n
@@ -196,7 +185,7 @@ contains
    end subroutine kipp_save
 
    subroutine kipp_close()
-      !! Close the open device, if any.
+      !! Close open device, if any.
       if (st%devid > 0) then
          call giza_select_device(st%devid)
          call giza_close_device()
@@ -205,9 +194,9 @@ contains
    end subroutine kipp_close
 
    subroutine kipp_choose_device()
-      !! Choose the output device from the environment.
+      !! Choose output device from environment.
       !!
-      !! The device is /xw when `$DISPLAY` is set, else a PNG file named by `st%prefix`.
+      !! /xw when `$DISPLAY` is set, else PNG named by `st%prefix`.
       character(len=256) :: disp
       integer :: ln, status
       call get_environment_variable('DISPLAY', disp, ln, status)
@@ -223,12 +212,11 @@ contains
    end subroutine kipp_choose_device
 
    subroutine clamp_view()
-      !! Keep the view limits inside the data.
+      !! Keep view limits inside data.
       !!
-      !! The bounds come from `xedge` and `ystar`, so they follow axis and unit changes.
-      !! The clamp works in world coordinates so logarithmic axes clamp correctly.
-      !! A pan keeps its span and stops at the data edge.
-      !! A view larger than the data snaps to the full range.
+      !! Bounds from `xedge` and `ystar` (so follow axis and unit changes), clamped in world coords
+      !! so log axes clamp correctly. Pan keeps its span and stops at data edge; view larger than
+      !! data snaps to full range.
       real(real64) :: wlo, whi, w1, w2
       wlo = xtrans(xedge(1)); whi = xtrans(xedge(nmodels + 1))
       w1 = xtrans(st%xmin); w2 = xtrans(st%xmax)
@@ -241,10 +229,9 @@ contains
    end subroutine clamp_view
 
    pure function ybound_lo() result(v)
-      !! Lower y bound of the data, in display units.
+      !! Return lower y bound of data, in display units.
       !!
-      !! This is the centre (0) on a linear axis.
-      !! On a logarithmic axis it is eight decades below the largest outer boundary.
+      !! Centre (0) on linear axis, eight decades below largest outer boundary on log axis.
       real(real64) :: v
       if (st%ylog) then
          v = maxval(ystar)/yscale()*1.d-8
@@ -254,18 +241,18 @@ contains
    end function ybound_lo
 
    pure subroutine clamp1(lo, hi, a, b)
-      !! Shift the interval [a, b] into [lo, hi], keeping its span.
+      !! Shift interval [a, b] into [lo, hi], keeping its span.
       !!
-      !! An interval wider than [lo, hi] becomes [lo, hi].
+      !! Intervals wider than [lo, hi] become [lo, hi].
       ! Arguments
       real(real64), intent(in)    :: lo
          !! Lower bound.
       real(real64), intent(in)    :: hi
          !! Upper bound.
       real(real64), intent(inout) :: a
-         !! Lower end of the interval.
+         !! Lower end of interval.
       real(real64), intent(inout) :: b
-         !! Upper end of the interval.
+         !! Upper end of interval.
       real(real64) :: d
       if (b - a >= hi - lo) then
          a = lo; b = hi
@@ -277,20 +264,19 @@ contains
    end subroutine clamp1
 
    subroutine set_visible_range()
-      !! Set the visible range `ivis0`..`ivis1` from the view.
+      !! Set visible range `ivis0`..`ivis1` from view.
       !!
-      !! These are the first and last model strips overlapping [st%xmin, st%xmax].
-      !! `xedge` increases for both x quantities, so a bisection finds the strip at each window edge.
+      !! First and last model strips overlapping [st%xmin, st%xmax]; `xedge` increases for both x
+      !! quantities, so bisection finds strip at each window edge.
       ivis0 = max(1_int32, min(nmodels, bisect_le(xedge, st%xmin)))
       ivis1 = max(ivis0, min(nmodels, bisect_le(xedge, st%xmax)))
    end subroutine set_visible_range
 
    subroutine draw_scene()
-      !! Draw one frame of the Kippenhahn diagram on the current device.
+      !! Draw one frame of Kippenhahn diagram on current device.
       !!
-      !! The view is clamped to the data, and the time unit and offset follow it, first.
-      !! The colour layer, convection hatch, grid and surface are drawn bottom to top.
-      !! The axes, colorbar and model-number strip go on top.
+      !! Clamps view and updates time unit and offset first, then draws bottom to top: colour layer,
+      !! convection hatch, grid, surface, then axes, colorbar, model-number strip.
       character(len=16) :: xopt, yopt
       character(len=64) :: xlabel, ylabel
       real(real64) :: wx1, wx2, wy1, wy2, vx2, xstep, ystep, xlim
@@ -403,23 +389,22 @@ contains
    end subroutine draw_scene
 
    subroutine draw_models(wx1, wx2, wy1, wy2, vx2)
-      !! Draw the model-number strip above the plot.
+      !! Draw model-number strip above plot.
       !!
-      !! Each visible model gets a tick that grows longer and wider with the trailing zeros of its number.
-      !! A multiple of five gets an extra half step in length.
-      !! The colour cycles through black, red, green and blue with the count of trailing zeros.
-      !! Nothing is drawn unless `st%showmodels` is set.
+      !! Each visible model gets a tick, longer and wider w/ more trailing zeros (multiples of five
+      !! half a step longer), coloured black, red, green, blue cycling w/ trailing-zero count. Only
+      !! when `st%showmodels` is set.
       ! Arguments
       real(real64), intent(in) :: wx1
-         !! Left edge of the window, in world coordinates.
+         !! Left window edge, in world coords.
       real(real64), intent(in) :: wx2
-         !! Right edge of the window, in world coordinates.
+         !! Right window edge, in world coords.
       real(real64), intent(in) :: wy1
-         !! Bottom edge of the window, in world coordinates.
+         !! Bottom window edge, in world coords.
       real(real64), intent(in) :: wy2
-         !! Top edge of the window, in world coordinates.
+         !! Top window edge, in world coords.
       real(real64), intent(in) :: vx2
-         !! Right edge of the plot viewport, as a fraction of the page width.
+         !! Right edge of plot viewport, as fraction of page width.
       real(real64) :: x(2), y(2), r, g, b
       integer(int32) :: i, val, mag, half, lev
 
@@ -460,22 +445,13 @@ contains
    end subroutine draw_models
 
    subroutine draw_convection()
-      !! Draw the convection zones as hatched regions, the Alex Heger way.
+      !! Draw convection zones as hatched regions, after Alex Heger's convplot.
       !!
-      !! Each contiguous convective region is drawn from traced bands, not one rectangle per model and zone.
-      !! This keeps the renderer fast and the hatch continuous across models.
-      !! The bands follow the zone interfaces across models.
-      !! All visible bands of a type are filled as one keyholed polygon with the type's hatch.
-      !! One fill means giza computes the hatch once, so it stays aligned across band seams.
-      !! The outline is stroked separately, in the type colour like convplot's PathPatch edge.
-      !! It comes from cached chains along the exact edge of the region.
-      !! The internal seams, where the tracer closes and restarts bands at merges and splits, are not part of it.
-      !!
-      !! Regions are tracked greedily per type.
-      !! An interval of model i joins the open band of the previous model that it overlaps in y.
-      !! A band with no match is closed, and an interval with no match opens a new band.
-      !! Merges and splits close and restart bands.
-      !! This is exact enough for the fill and keeps the bookkeeping bounded.
+      !! Bands come from greedy per-type tracer (`tracer_step`), not one rectangle per model and
+      !! zone. All visible bands of a type fill as one keyholed polygon, so giza computes hatch once
+      !! and it stays aligned across models and band seams. Outline stroked separately in type
+      !! colour (as convplot's PathPatch edge) from cached exact-edge chains, which exclude tracer
+      !! seams at merges and splits.
       integer(int32) :: t
       if (.not. conv_valid) call build_conv_cache()
       call giza_set_line_width(1.d0)
@@ -489,11 +465,10 @@ contains
    end subroutine draw_convection
 
    subroutine set_hatch_for_type(t)
-      !! Set the fill hatch of convection type `t`.
+      !! Set fill hatch of convection type `t`.
       !!
-      !! The hatches match ConvPlot.conv_hatch.
-      !! Convective is '/' and thermohaline '\'.
-      !! Semiconvective, neutral and overshoot are crossed at different densities.
+      !! Matches ConvPlot.conv_hatch: convective '/', thermohaline '\', semiconvective, neutral and
+      !! overshoot crossed at different densities.
       ! Arguments
       integer(int32), intent(in) :: t
          !! Convection type code, from convdata.f90.
@@ -514,7 +489,7 @@ contains
    end subroutine set_hatch_for_type
 
    subroutine draw_bandset(bs)
-      !! Fill each band of a bandset as its own polygon.
+      !! Fill each band of bandset as its own polygon.
       ! Arguments
       type(bandset_t), intent(in) :: bs
          !! Bands to fill.
@@ -525,20 +500,18 @@ contains
    end subroutine draw_bandset
 
    pure function band_y_visible(bd, j0, j1) result(vis)
-      !! Test whether band `bd` overlaps the y window over models `j0`..`j1`.
+      !! Test whether band `bd` overlaps y window over models `j0`..`j1`.
       !!
-      !! Bands outside the y window must not be emitted.
-      !! Linked into the keyholed fill polygon, their bridges would cross the window.
-      !! giza hatches by clip and stroke over the bounding box of the clip extents.
-      !! The cairo xlib backend does not confine that to a zero-area keyhole clip,
-      !! so hatch lines flood the axes box on /xw.
+      !! Bands outside y window must not be emitted: linked into keyholed fill, their bridges would
+      !! cross window, and cairo xlib backend does not confine giza's clip-and-stroke hatch to a
+      !! zero-area keyhole clip, so hatch lines flood axes box on /xw.
       ! Arguments
       type(band_t), intent(in) :: bd
          !! Band to test.
       integer(int32), intent(in) :: j0
-         !! First model of the visible stretch.
+         !! First model of visible stretch.
       integer(int32), intent(in) :: j1
-         !! Last model of the visible stretch.
+         !! Last model of visible stretch.
       logical :: vis
       integer(int32) :: i, o
       real(real64) :: blo, bhi
@@ -552,11 +525,10 @@ contains
    end function band_y_visible
 
    subroutine draw_band(bd)
-      !! Fill one cached band as a single polygon.
+      !! Fill one cached band as single polygon.
       !!
-      !! The lower interface is traced left to right as a staircase, then the upper interface right to left.
-      !! Only the visible range is emitted.
-      !! A band cut by the window edge is closed there, so the polygon side lands on the window boundary.
+      !! Lower interface traced left to right as staircase, upper right to left, visible range only.
+      !! Band cut by window edge closes there, so polygon side lands on window boundary.
       ! Arguments
       type(band_t), intent(in) :: bd
          !! Band to fill.
@@ -579,12 +551,11 @@ contains
    end subroutine draw_band
 
    subroutine fill_bandset_linked(bs)
-      !! Fill all visible bands of one type as a single keyholed polygon.
+      !! Fill all visible bands of one type as single keyholed polygon.
       !!
-      !! Band loops are linked by "bridges" between their anchors, the first point of each loop.
-      !! Each bridge is walked once out and once back along the same line.
-      !! It so encloses no area and stays invisible under cairo's winding fill.
-      !! One polygon means one giza fill, so the hatch is computed once and stays aligned across the bands.
+      !! Band loops linked by "bridges" between anchors (first point of each loop), each walked out
+      !! and back along one line, so enclosing no area under cairo's winding fill. One polygon is
+      !! one giza fill, so hatch is computed once and stays aligned across bands.
       ! Arguments
       type(bandset_t), intent(in) :: bs
          !! Bands of one type.
@@ -631,11 +602,10 @@ contains
    end subroutine fill_bandset_linked
 
    subroutine draw_chainset(cs)
-      !! Stroke the cached region outline of one type.
+      !! Stroke cached region outline of one type.
       !!
-      !! Each chain is a polyline along the exact boundary of the region.
-      !! Only points on visible strip edges are emitted.
-      !! One point of lead-in and lead-out is kept so a cut chain runs through the window edge, where giza clips it.
+      !! Emits only points on visible strip edges, plus one lead-in and lead-out point so cut chains
+      !! run through window edge, where giza clips them.
       ! Arguments
       type(chainset_t), intent(in) :: cs
          !! Outline chains of one type.
@@ -667,7 +637,7 @@ contains
    end subroutine draw_chainset
 
    pure function clampx(v) result(r)
-      !! Clamp a world x coordinate to the emit clamp box.
+      !! Clamp world x coord to emit clamp box.
       ! Arguments
       real(real64), intent(in) :: v
          !! World x coordinate.
@@ -676,7 +646,7 @@ contains
    end function clampx
 
    pure function clampy(v) result(r)
-      !! Clamp a world y coordinate to the emit clamp box.
+      !! Clamp world y coord to emit clamp box.
       ! Arguments
       real(real64), intent(in) :: v
          !! World y coordinate.
@@ -685,9 +655,9 @@ contains
    end function clampy
 
    subroutine ensure_scratch(need)
-      !! Grow the polygon scratch `epx`, `epy` to hold at least `need` points.
+      !! Grow polygon scratch `epx`, `epy` to hold at least `need` points.
       !!
-      !! A grown scratch does not keep its old contents.
+      !! Discards old contents when grown.
       ! Arguments
       integer(int32), intent(in) :: need
          !! Number of points needed.
@@ -699,10 +669,9 @@ contains
    end subroutine ensure_scratch
 
    subroutine draw_field(f)
-      !! Fill a colour field as nested solid bands shaded by the colormap.
+      !! Fill colour field as nested solid bands shaded by colormap.
       !!
-      !! Each contour bin is one bandset.
-      !! The coolest bin (1) is drawn first, so hotter bins overpaint inward.
+      !! One bandset per contour bin, coolest (1) first so hotter bins overpaint inward.
       ! Arguments
       integer(int32), intent(in) :: f
          !! Colour field index, as registered in convdata.f90.
@@ -725,15 +694,14 @@ contains
    end subroutine draw_field
 
    subroutine draw_energy(layer)
-      !! Fill an energy layer as nested solid bands.
+      !! Fill energy layer as nested solid bands.
       !!
-      !! Each integer contour level is one bandset from the cached band tracer, as for the convection zones.
-      !! This makes one polygon per contiguous run of models, not per model.
-      !! Loss levels shade white to magenta, outermost first.
-      !! Gain levels then shade white to blue, nested inward.
+      !! One cached bandset per integer contour level, so one polygon per contiguous model run. Loss
+      !! levels shade white to magenta, outermost first, then gain levels white to blue, nested
+      !! inward.
       ! Arguments
       integer(int32), intent(in) :: layer
-         !! Energy layer index, as described in layers.f90.
+         !! Energy layer index, as in layers.f90.
       integer(int32) :: lev
       real(real64) :: f
       if (.not. ecache(layer)%valid) call build_energy_cache(layer)
@@ -759,9 +727,9 @@ contains
    end subroutine draw_energy
 
    subroutine draw_surface()
-      !! Draw the surface line over the visible range.
+      !! Draw surface line over visible range.
       !!
-      !! One extra model on each side keeps the line crossing the window edge.
+      !! One extra model on each side keeps line crossing window edge.
       integer(int32) :: i, n, p0, p1
       p0 = max(1_int32, ivis0 - 1)
       p1 = min(nmodels, ivis1 + 1)
@@ -777,21 +745,20 @@ contains
    end subroutine draw_surface
 
    subroutine draw_grid(wx1, wx2, wy1, wy2)
-      !! Draw the cell and time boundary grid over the visible range.
+      !! Draw cell and time-boundary grid over visible range.
       !!
-      !! Strips narrower than a device pixel merge into the next drawn one, which shows that model's faces.
-      !! Faces within a pixel of the last one kept are skipped.
-      !! So the cost follows the window size rather than the file.
-      !! Nothing is drawn unless `st%showgrid` is set.
+      !! Strips narrower than a device pixel merge into next drawn one (which shows that model's
+      !! faces) and faces within a pixel of last kept are skipped, so cost follows window size, not
+      !! file. Only when `st%showgrid` is set.
       ! Arguments
       real(real64), intent(in) :: wx1
-         !! Left edge of the window, in world coordinates.
+         !! Left window edge, in world coords.
       real(real64), intent(in) :: wx2
-         !! Right edge of the window, in world coordinates.
+         !! Right window edge, in world coords.
       real(real64), intent(in) :: wy1
-         !! Bottom edge of the window, in world coordinates.
+         !! Bottom window edge, in world coords.
       real(real64), intent(in) :: wy2
-         !! Top edge of the window, in world coordinates.
+         !! Top window edge, in world coords.
       real(real64) :: px1, px2, py1, py2, dxw, dyw, xa, xb
       integer(int32) :: i
       logical, save :: noted = .false.
@@ -823,14 +790,14 @@ contains
    end subroutine draw_grid
 
    subroutine grid_edge(x, i, k)
-      !! Draw the time boundary at world `x`, spanning the extent of models `i` and `k`.
+      !! Draw time boundary at world `x`, spanning extent of models `i` and `k`.
       ! Arguments
       real(real64), intent(in) :: x
-         !! World x coordinate of the boundary.
+         !! World x coord of boundary.
       integer(int32), intent(in) :: i
-         !! Model on one side of the boundary.
+         !! Model on one side of boundary.
       integer(int32), intent(in) :: k
-         !! Model on the other side of the boundary.
+         !! Model on other side of boundary.
       real(real64) :: ex(2), ey(2)
       ex = clampx(x)
       ey(1) = clampy(ytrans(min(mbound(i, 0_int32), mbound(k, 0_int32))))
@@ -839,15 +806,15 @@ contains
    end subroutine grid_edge
 
    subroutine grid_strip(xa, xb, c, dyw)
-      !! Draw the cell faces of one strip as a zig-zag polyline.
+      !! Draw cell faces of one strip as zig-zag polyline.
       !!
-      !! The line runs across world x [xa, xb] through the faces in `c` inside the view.
-      !! Faces within `dyw` of the last one kept are skipped.
+      !! Runs across world x [xa, xb] through faces in `c` inside view, skipping faces within `dyw`
+      !! of last kept.
       ! Arguments
       real(real64), intent(in) :: xa
-         !! Left edge of the strip, in world coordinates.
+         !! Left strip edge, in world coords.
       real(real64), intent(in) :: xb
-         !! Right edge of the strip, in world coordinates.
+         !! Right strip edge, in world coords.
       real(real64), intent(in) :: c(:)
          !! Cell faces in cgs, centre to surface.
       real(real64), intent(in) :: dyw

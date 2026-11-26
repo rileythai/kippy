@@ -20,18 +20,7 @@
 module axes
    !! Tick labels, axis titles and colorbars.
    !!
-   !! - `fit_x_step` widens the linear x tick step until the x labels fit.
-   !! - `tick_labels` writes the tick labels of `giza_box`, minus any that would clip.
-   !! - `labels` builds the axis titles from the axis quantities and units.
-   !! - `draw_colorbar` and `draw_field_colorbar` draw the colorbar of an energy layer
-   !!   or a colour field in a strip in the right margin.
-   !! - `colormap` gives the colour field's colour at a point of its range.
-   !!   `is_reversed` tests a colormap name for the reversing suffix.
-   !! - `c_giza_round` rounds a tick step to a "nice" number, 2, 5 or 10 times a power of ten.
-   !!
-   !! draw.f90 calls the tick, title and colorbar routines from `draw_scene`, and `colormap` for the colour field bands.
-   !! kipp.f90 uses `is_reversed` for the colormap selection.
-   !! This module holds no state.
+   !! Called from `draw_scene` (draw.f90); holds no state.
 
    use iso_c_binding, only: c_int, c_double
    use typedef, only: int32, real64
@@ -55,13 +44,13 @@ module axes
       function c_giza_round(x, nsub) bind(C, name='giza_round') result(r)
          !! Round `x` to a nice tick step.
          !!
-         !! The result is the smallest of 2, 5 or 10 times a power of ten not below |x|, with the sign of x.
-         !! Binds giza's C `giza_round` directly.
+         !! Smallest of 2, 5 or 10 times a power of ten not below |x|, w/ sign of x. Binds giza's C
+         !! `giza_round` directly.
          import :: c_int, c_double
          real(c_double), value :: x
             !! Value to round.
          integer(c_int), intent(out) :: nsub
-            !! Number of minor tick intervals per step: 2 for a step of 2, else 5.
+            !! Minor tick intervals per step: 2 for a step of 2, else 5.
          real(c_double) :: r
       end function c_giza_round
    end interface
@@ -74,25 +63,25 @@ module axes
 contains
 
    subroutine fit_x_step(wx1, wx2, wy1, wy2, xlim, step, nsub)
-      !! Choose the tick step of a linear x axis.
+      !! Choose tick step of linear x axis.
       !!
-      !! The first try is the capped automatic step of `giza_box`, 0.2 of the x range rounded by `c_giza_round`.
-      !! The step widens to the next nice step until no x label sits within one character height of the last.
+      !! Starts at `giza_box`'s capped automatic step (0.2 of x range, rounded by `c_giza_round`),
+      !! widens to next nice step until no x label sits within one character height of the last.
       ! Arguments
       real(real64), intent(in) :: wx1
-         !! Left edge of the window, in world coordinates.
+         !! Left window edge, in world coords.
       real(real64), intent(in) :: wx2
-         !! Right edge of the window, in world coordinates.
+         !! Right window edge, in world coords.
       real(real64), intent(in) :: wy1
-         !! Bottom edge of the window, in world coordinates.
+         !! Bottom window edge, in world coords.
       real(real64), intent(in) :: wy2
-         !! Top edge of the window, in world coordinates.
+         !! Top window edge, in world coords.
       real(real64), intent(in) :: xlim
-         !! Right limit of the x labels, as a fraction of the page width.
+         !! Right limit of x labels, as fraction of page width.
       real(real64), intent(out) :: step
-         !! Tick step, in world coordinates.
+         !! Tick step, in world coords.
       integer(c_int), intent(out) :: nsub
-         !! Number of minor tick intervals per step.
+         !! Minor tick intervals per step.
       logical :: crowded
       step = c_giza_round(0.2d0*(wx2 - wx1), nsub)
       do
@@ -103,31 +92,30 @@ contains
    end subroutine fit_x_step
 
    subroutine tick_labels(wx1, wx2, wy1, wy2, xstep, ystep, xlim, dry, crowded)
-      !! Write the tick labels of `giza_box` option 'N', minus any that would clip.
+      !! Write tick labels of `giza_box` option 'N', minus any that would clip.
       !!
-      !! The strings and their placement match `giza_box`.
-      !! An x label is dropped past the left page edge or past page fraction `xlim`.
-      !! An x label within one character height of the previous one is dropped and sets `crowded`.
-      !! A y label is dropped where its text, written along the axis, would run into an x label.
+      !! Strings and placement match `giza_box`. Drops x labels past left page edge or page fraction
+      !! `xlim`, x labels within one character height of previous (sets `crowded`), and y labels
+      !! whose along-axis text would run into an x label.
       ! Arguments
       real(real64), intent(in) :: wx1
-         !! Left edge of the window, in world coordinates.
+         !! Left window edge, in world coords.
       real(real64), intent(in) :: wx2
-         !! Right edge of the window, in world coordinates.
+         !! Right window edge, in world coords.
       real(real64), intent(in) :: wy1
-         !! Bottom edge of the window, in world coordinates.
+         !! Bottom window edge, in world coords.
       real(real64), intent(in) :: wy2
-         !! Top edge of the window, in world coordinates.
+         !! Top window edge, in world coords.
       real(real64), intent(in) :: xstep
-         !! Tick step of the x axis, unused on a logarithmic axis.
+         !! x tick step, unused on log axis.
       real(real64), intent(in) :: ystep
-         !! Tick step of the y axis, unused on a logarithmic axis.
+         !! y tick step, unused on log axis.
       real(real64), intent(in) :: xlim
-         !! Right limit of the x labels, as a fraction of the page width.
+         !! Right limit of x labels, as fraction of page width.
       logical, intent(in) :: dry
-         !! Only test the x labels for crowding, writing nothing.
+         !! Only test x labels for crowding, writing nothing.
       logical, intent(out) :: crowded
-         !! An x label was dropped for sitting too close to the previous one.
+         !! An x label was dropped for sitting too close to previous one.
       integer(int32), parameter :: NBOX = 64
       real(real64) :: px1, px2, py1, py2, nx1, nx2, ny1, ny2, cw, ch, lo, hi, last
       real(real64) :: bx(4, NBOX)        ! kept x label boxes, mm: x1 x2 y1 y2
@@ -144,21 +132,21 @@ contains
       if (.not. dry) call axis(.false., wy1, wy2, ystep, st%ylog)
    contains
       subroutine axis(isx, w1, w2, step, logax)
-         !! Put the label candidates of one axis, in ascending order.
+         !! Put label candidates of one axis, ascending.
          !!
-         !! A logarithmic axis labels each decade.
-         !! It also labels 2 and 5 times each decade when it spans under two decades.
+         !! Log axis labels each decade, plus 2 and 5 times each decade when it spans under two
+         !! decades.
          ! Arguments
          logical, intent(in) :: isx
-            !! The x axis, else the y axis.
+            !! x axis, else y axis.
          real(real64), intent(in) :: w1
-            !! Lower edge of the window on this axis, in world coordinates.
+            !! Lower window edge on this axis, in world coords.
          real(real64), intent(in) :: w2
-            !! Upper edge of the window on this axis, in world coordinates.
+            !! Upper window edge on this axis, in world coords.
          real(real64), intent(in) :: step
-            !! Tick step, unused on a logarithmic axis.
+            !! Tick step, unused on log axis.
          logical, intent(in) :: logax
-            !! The axis is logarithmic.
+            !! Axis is logarithmic.
          integer(int32), parameter :: MANT(2) = [2, 5]
          integer(int32) :: i, k, np, nv
          if (logax) then
@@ -185,15 +173,15 @@ contains
       end subroutine axis
 
       subroutine put(isx, ratio)
-         !! Write the label `txt` at one point of an axis, unless it would clip.
+         !! Write label `txt` at one point of an axis, unless it would clip.
          !!
-         !! `giza_box` writes x labels 1.2 and y labels 0.7 character heights out from the axis.
-         !! Labels are centred on their tick, and y labels run along the axis.
+         !! As `giza_box`: x labels 1.2, y labels 0.7 character heights out from axis, centred on
+         !! tick, y labels along axis.
          ! Arguments
          logical, intent(in) :: isx
-            !! The x axis, else the y axis.
+            !! x axis, else y axis.
          real(real64), intent(in) :: ratio
-            !! Position along the axis, from 0 at the lower window edge to 1 at the upper.
+            !! Position along axis, 0 at lower window edge, 1 at upper.
          real(real64) :: w, h, c, b(4)
          integer(int32) :: k
          if (ratio < 0.d0 .or. ratio > 1.d0) return
@@ -225,14 +213,14 @@ contains
    end subroutine tick_labels
 
    subroutine labels(xlabel, ylabel)
-      !! Build the axis titles from the axis quantities and units.
+      !! Build axis titles from axis quantities and units.
       !!
-      !! A logarithmic axis gets a 'log' prefix.
+      !! Log axis gets a 'log' prefix.
       ! Arguments
       character(len=*), intent(out) :: xlabel
-         !! Title of the x axis.
+         !! x-axis title.
       character(len=*), intent(out) :: ylabel
-         !! Title of the y axis.
+         !! y-axis title.
       if (st%xaxis == 'model') then
          xlabel = 'model number'
       else
@@ -248,18 +236,14 @@ contains
    end subroutine labels
 
    subroutine draw_colorbar(layer)
-      !! Draw the colorbar of an energy layer in the right margin.
+      !! Draw energy-layer colorbar in right margin.
       !!
-      !! The colorbar is a framed strip of coloured cells.
-      !! Gain cells stack from the top, deepest blue for the strongest gain.
-      !! Loss cells stack from the bottom, deepest magenta for the strongest loss.
-      !! A half-cell gap splits the two.
-      !! Each cell's log10 level is written beside it.
-      !! A level is nint(log10|eps|), so it names the cell, not a boundary.
-      !! GAIN, the title and LOSS run up the outer edge.
+      !! Framed strip of cells: gain stacks from top (deepest blue strongest), loss from bottom
+      !! (deepest magenta strongest), half-cell gap between. Each cell labelled w/ its level
+      !! nint(log10|eps|), naming the cell, not a boundary; GAIN, title and LOSS run up outer edge.
       ! Arguments
       integer(int32), intent(in) :: layer
-         !! Energy layer, as numbered in layers.f90.
+         !! Energy layer, numbered as in layers.f90.
       integer(int32) :: gmax, lmax, gmin, lmin, lev
       real(real64) :: dy, y0, f
       character(len=16) :: txt
@@ -308,19 +292,19 @@ contains
    end subroutine draw_colorbar
 
    subroutine colorbar_viewport()
-      !! Set the viewport of the colorbar strip in the right margin.
+      !! Set viewport of colorbar strip in right margin.
       !!
-      !! The window is the unit square and the character height is the tick label height.
+      !! Window is unit square, character height is tick label height.
       call giza_set_viewport(0.86d0, 0.88d0, 0.12d0, 0.96d0)
       call giza_set_window(0.d0, 1.d0, 0.d0, 1.d0)
       call giza_set_character_height(CB_TICK*chs)
    end subroutine colorbar_viewport
 
    subroutine cell_label(y, txt)
-      !! Write a horizontal label beside the colorbar strip.
+      !! Write horizontal label beside colorbar strip.
       ! Arguments
       real(real64), intent(in) :: y
-         !! Height in the strip window, from 0 to 1.
+         !! Height in strip window, 0 to 1.
       character(len=*), intent(in) :: txt
          !! Label text.
       call giza_set_colour_index(1)
@@ -328,16 +312,16 @@ contains
    end subroutine cell_label
 
    subroutine colorbar_title(y, fjust, h, txt)
-      !! Write text up the outer side of the colorbar.
+      !! Write text up outer side of colorbar.
       !!
-      !! The text clears tick labels of up to about 5 characters.
+      !! Clears tick labels of up to about 5 characters.
       ! Arguments
       real(real64), intent(in) :: y
-         !! Position along the strip, as a fraction of its height.
+         !! Position along strip, as fraction of its height.
       real(real64), intent(in) :: fjust
          !! Justification about `y`: 0 starts the text there, 1 ends it there, 0.5 centres it.
       real(real64), intent(in) :: h
-         !! Character height, as a multiple of `chs`.
+         !! Character height, as multiple of `chs`.
       character(len=*), intent(in) :: txt
          !! Text to write.
       call giza_set_colour_index(1)
@@ -347,12 +331,11 @@ contains
    end subroutine colorbar_title
 
    subroutine draw_field_colorbar(f)
-      !! Draw the colorbar of a colour field in the right margin.
+      !! Draw colour-field colorbar in right margin.
       !!
-      !! The colorbar is a framed strip of the `FIELD_NBINS` contour colours.
-      !! It spans the field's [vmin, vmax] across the whole run.
-      !! The round value ticks of `giza_box` sit on its right edge.
-      !! The column name runs up the page edge, with 'log' on a logarithmic scale.
+      !! Framed strip of `FIELD_NBINS` contour colours over field's [vmin, vmax] across whole run,
+      !! `giza_box` round value ticks on right edge. Column name runs up page edge, w/ 'log' on log
+      !! scale.
       ! Arguments
       integer(int32), intent(in) :: f
          !! Colour field index, as registered in convdata.f90.
@@ -405,18 +388,18 @@ contains
    end subroutine draw_field_colorbar
 
    pure subroutine colormap(t, r, g, b)
-      !! Return the colour of colormap `st%cmap` at `t`.
+      !! Return colour of colormap `st%cmap` at `t`.
       !!
-      !! A '_r' suffix on the name reverses the colormap.
+      !! '_r' suffix on name reverses colormap.
       ! Arguments
       real(real64), intent(in) :: t
-         !! Position in the colormap, from 0 to 1.
+         !! Position in colormap, 0 to 1.
       real(real64), intent(out) :: r
-         !! Red component, from 0 to 1.
+         !! Red component, 0 to 1.
       real(real64), intent(out) :: g
-         !! Green component, from 0 to 1.
+         !! Green component, 0 to 1.
       real(real64), intent(out) :: b
-         !! Blue component, from 0 to 1.
+         !! Blue component, 0 to 1.
       integer(int32) :: n
       n = len_trim(st%cmap)
       if (is_reversed(st%cmap)) then
@@ -427,7 +410,7 @@ contains
    end subroutine colormap
 
    pure logical function is_reversed(name)
-      !! Test whether a colormap name ends in the reversing suffix '_r'.
+      !! Test whether colormap name ends in reversing suffix '_r'.
       ! Arguments
       character(len=*), intent(in) :: name
          !! Colormap name.

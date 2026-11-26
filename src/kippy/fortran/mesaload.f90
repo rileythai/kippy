@@ -18,29 +18,12 @@
 
 ! mesaload.f90 -- MESA profile and .kipp readers, and the input dispatcher
 module mesaload
-   !! MESA profile and `.kipp` readers, and the dispatcher over every input format.
+   !! MESA profile and `.kipp` readers, and dispatcher over every input format.
    !!
-   !! `load_convection` picks the reader from the path ("Input formats", docs/formats.md).
-   !! Every reader fills `convdata%data` with one `.cnv`-layout record per model.
-   !!
-   !! A MESA run directory holds `profileN.data` text files and a `profiles.index`.
-   !! The index maps profile number to model number.
-   !! Each profile becomes one record with the model number, age, mass and radius grid,
-   !! convection zones from `mixing_type`, and energy layers from `eps_nuc` and `eps_nuc_neu_total`.
-   !! Profiles are often sparse in time, since they are written as text.
-   !! The band tracer still bridges consecutive profiles into continuous polygons.
-   !!
-   !! A `.kipp` file is the same model sequence packed as one raw float64 stream, one row per cell (docs/kippfiles.md).
-   !! Its column layout comes from a sidecar header `<path>.hdr`.
-   !! `loadkipp` streams it into the same records.
-   !!
-   !! Non-structural columns of the source are registered as colour fields.
-   !! These are every named column of a `.kipp` stream, or a curated set of MESA profile columns.
-   !! Their values are binned into `FIELD_NBINS` contour levels spanning the range of the whole model sequence.
-   !! `color <column>` can then shade the diagram by e.g. temperature, with a colorbar of the real range.
-   !!
-   !! kipp.f90 and convdump.f90 call `load_convection`.
-   !! kipp.f90 reads `kipp_axis_units`, and draw.f90 reads `cnv_loaded`.
+   !! `load_convection` picks reader from path ("Input formats", docs/formats.md); every reader
+   !! fills `convdata%data` w/ one `.cnv`-layout record per model. Non-structural source columns
+   !! (every named `.kipp` column, a curated MESA set) register as colour fields, binned into
+   !! `FIELD_NBINS` levels over whole-sequence range.
 
    use typedef, only: &
       int32, int64, real64
@@ -65,20 +48,23 @@ module mesaload
    public :: loadmesa, load_convection, cnv_loaded, kipp_axis_units
 
    logical :: cnv_loaded = .false.
-      !! The last load went through the `.cnv` reader, whose grid may be reduced.
+      !! Last load went through `.cnv` reader, whose grid may be reduced.
 
    character(len=4) :: kipp_axis_units(3) = ''
-      !! Units a `.kipp` header states for its age, mass and radius columns, blank where it states none.
-      !! Indexed by `DIM_TIME`, `DIM_MASS` and `DIM_LENGTH`.
+      !! Units a `.kipp` header states for age, mass and radius columns, blank where none.
+      !!
+      !! Indexed by `DIM_TIME`, `DIM_MASS`, `DIM_LENGTH`.
 
    integer(int32), parameter :: MESA_MAX_THREADS = 4
-      !! Cap on the profile-read thread pool.
-      !! Profile parsing is memory-bandwidth bound, so throughput peaks around 3 to 4 threads.
-      !! A lower `OMP_NUM_THREADS` overrides it at runtime.
+      !! Cap on profile-read thread pool.
+      !!
+      !! Parsing is memory-bandwidth bound, peaking around 3 to 4 threads; a lower `OMP_NUM_THREADS`
+      !! overrides it at runtime.
 
    integer(int32), parameter :: MESA_NO_MIXING = 0
       !! MESA `no_mixing`, drawn as radiative.
-      !! The mixing codes are named as in MESA r26.04.1 const/public/const_def.f90.
+      !!
+      !! Mixing codes named as in MESA r26.04.1 const/public/const_def.f90.
    integer(int32), parameter :: MESA_CONVECTIVE_MIXING = 1
       !! MESA `convective_mixing`, drawn as convective.
    integer(int32), parameter :: MESA_OVERSHOOT_MIXING = 2
@@ -98,25 +84,23 @@ module mesaload
       character(len=16) :: 'logT', 'logRho', 'logL', 'luminosity', 'logP', &
       'pressure', 'opacity', 'entropy', 'velocity']
       !! Curated MESA profile body columns offered as colour fields.
-      !! The whole profile body is huge, so only these physically useful scalars are read.
-      !! A listed name absent from a run is skipped.
+      !!
+      !! Only these scalars are read, since full body is huge; names absent from a run are skipped.
 
    type :: rawset
-      !! Colour-field values of one profile, held between the parallel read and the serial binning.
+      !! Colour-field values of one profile, held between parallel read and serial binning.
       real(real64), allocatable :: v(:, :)
-         !! Value of each cell (rows, centre to surface) and field (columns).
+         !! Value per cell (rows, centre to surface) and field (columns).
    end type rawset
 
 contains
 
    subroutine load_convection(path, ifirst, ilast)
-      !! Load any supported input into `data`, with the reader picked from the path.
+      !! Load any supported input into `data`, reader picked from path.
       !!
-      !! A basename that begins with `seq.` or ends with `.seq` is a MONASH file.
-      !! A path ending in `.kipp` is a raw float64 cell stream.
-      !! A directory holding `profiles.index` is a MESA run.
-      !! Anything else is a KEPLER `.cnv` file.
-      !! This single entry point lets every format work wherever a `.cnv` path did.
+      !! Basename `seq.*` or `*.seq`: MONASH; `.kipp`: raw float64 cell stream; directory holding
+      !! `profiles.index`: MESA run; else KEPLER `.cnv`. Lets every format work wherever a `.cnv`
+      !! path did.
       ! Arguments
       character(len=*), intent(in) :: path
          !! Input path.
@@ -149,15 +133,16 @@ contains
    end subroutine load_convection
 
    subroutine loadmesa(dirname, ifirst, ilast)
-      !! Load the profiles of a MESA run directory into `data`.
+      !! Load profiles of MESA run directory into `data`.
       !!
-      !! `profiles.index` gives the profile of each model number from `ifirst` to `ilast`.
-      !! At least 2 profiles must be in range.
-      !! The profiles are parsed concurrently with OpenMP, by at most `MESA_MAX_THREADS` threads.
-      !! The colour-field ranges and layers are then built serially, and the models sorted with `sort_models`.
+      !! `profiles.index` maps model numbers `ifirst` to `ilast` to profiles, at least 2 in range.
+      !! Each profile becomes one record (model number, age, mass and radius grid, zones from
+      !! `mixing_type`, energy layers from `eps_nuc` and `eps_nuc_neu_total`), parsed concurrently
+      !! w/ OpenMP by at most `MESA_MAX_THREADS` threads; field ranges and layers then built
+      !! serially, then `sort_models`.
       ! Arguments
       character(len=*), intent(in) :: dirname
-         !! Path of the MESA run directory.
+         !! Path of MESA run directory.
       integer(int32), intent(in) :: ifirst
          !! First model number to load.
       integer(int32), intent(in) :: ilast
@@ -247,13 +232,13 @@ contains
    end subroutine loadmesa
 
    subroutine register_mesa_fields(dirname, pnum, fld_col, nf)
-      !! Register the curated colour fields present in a run.
+      !! Register curated colour fields present in a run.
       !!
-      !! The body header of one profile is matched against `MESA_FIELD_CAND`.
-      !! This sets the shared registry and the body column of each matched field.
+      !! Matches one profile's body header against `MESA_FIELD_CAND`, setting shared registry and
+      !! each matched field's body column.
       ! Arguments
       character(len=*), intent(in) :: dirname
-         !! Path of the MESA run directory.
+         !! Path of MESA run directory.
       integer(int32), intent(in) :: pnum
          !! Profile number whose body header is read.
       integer(int32), allocatable, intent(out) :: fld_col(:)
@@ -299,18 +284,16 @@ contains
    end subroutine register_mesa_fields
 
    subroutine loadkipp(path, ifirst, ilast)
-      !! Stream a raw `.kipp` cell file into `data`.
+      !! Stream raw `.kipp` cell file into `data`.
       !!
-      !! The file is one contiguous float64 array of `ncols`-wide cells (docs/kippfiles.md).
-      !! Cells are grouped by model, and run from surface to centre within a model.
-      !! The column layout is read from the sidecar header.
-      !! Cells are read in large chunks, so files of a few GB never fully reside in memory.
-      !! Only the current model's cells and the finished records are held.
-      !! The first pass builds the records and the field ranges.
-      !! `fill_kipp_fields` then bins the fields in a second pass.
+      !! One contiguous float64 array of `ncols`-wide cells, grouped by model, surface to centre
+      !! within a model, column layout from sidecar header `<path>.hdr` (docs/kippfiles.md). Read in
+      !! large chunks holding only current model's cells and finished records, so multi-GB files
+      !! never fully reside in memory. Pass one builds records and field ranges; `fill_kipp_fields`
+      !! bins fields in pass two.
       ! Arguments
       character(len=*), intent(in) :: path
-         !! Path of the `.kipp` file.
+         !! Path of `.kipp` file.
       integer(int32), intent(in) :: ifirst
          !! First model number to load.
       integer(int32), intent(in) :: ilast
@@ -443,22 +426,22 @@ contains
 
    subroutine fill_kipp_fields(path, ncols, c_model, fld_col, nf, &
                                recs, ndata, ifirst, ilast)
-      !! Re-read a `.kipp` file and bin each registered field into `recs(k)%fld`.
+      !! Re-read `.kipp` file and bin each registered field into `recs(k)%fld`.
       !!
-      !! This is the second streaming pass of `loadkipp`.
-      !! The grouping mirrors the first pass exactly, with the same model boundaries and the same range filter.
-      !! A running counter then maps each completed in-range model back to the record it produced there.
+      !! Second streaming pass of `loadkipp`: grouping mirrors pass one exactly (same model
+      !! boundaries and range filter), so a running counter maps each completed in-range model to
+      !! its record.
       ! Arguments
       character(len=*), intent(in) :: path
-         !! Path of the `.kipp` file.
+         !! Path of `.kipp` file.
       integer(int32), intent(in) :: ncols
          !! Number of values per cell.
       integer(int32), intent(in) :: c_model
-         !! Column of the model number.
+         !! Column of model number.
       integer(int32), intent(in) :: nf
          !! Number of registered fields.
       integer(int32), intent(in) :: ndata
-         !! Number of records the first pass built.
+         !! Number of records pass one built.
       integer(int32), intent(in) :: ifirst
          !! First model number to load.
       integer(int32), intent(in) :: ilast
@@ -466,7 +449,7 @@ contains
       integer(int32), intent(in) :: fld_col(:)
          !! Column of each registered field.
       type(convtype), intent(inout) :: recs(:)
-         !! Records of the first pass, in stream order.
+         !! Records of pass one, in stream order.
 
       integer(int32), parameter :: CHUNK = 65536
       integer(int32) :: iunit, iostat, j, m, cur, nz, zcap, counter, f
@@ -526,15 +509,15 @@ contains
    end subroutine fill_kipp_fields
 
    subroutine flush_kipp_fields(recs, counter, model, nz, fb, nf, ifirst, ilast)
-      !! Bin one model's accumulated field values into the `fld` layers of its record.
+      !! Bin one model's accumulated field values into its record's `fld` layers.
       !!
-      !! The values are reversed from surface to centre, as read, to centre to surface.
-      !! A model out of range or with no cells is skipped, as in the first pass.
+      !! Values reversed from surface-to-centre (as read) to centre-to-surface; out-of-range or
+      !! empty models skipped, as in pass one.
       ! Arguments
       type(convtype), intent(inout) :: recs(:)
-         !! Records of the first pass, in stream order.
+         !! Records of pass one, in stream order.
       integer(int32), intent(inout) :: counter
-         !! Index of the last filled record, advanced by one when the model is kept.
+         !! Index of last filled record, advanced by one when model is kept.
       integer(int32), intent(in) :: model
          !! Model number.
       integer(int32), intent(in) :: nz
@@ -569,7 +552,7 @@ contains
    end subroutine flush_kipp_fields
 
    subroutine grow_fb(fb, zcap)
-      !! Double the cell capacity of the field accumulation buffer, keeping its contents.
+      !! Double cell capacity of field accumulation buffer, keeping contents.
       ! Arguments
       real(real64), allocatable, intent(inout) :: fb(:, :)
          !! Value of each field (rows) and cell (columns).
@@ -587,19 +570,17 @@ contains
    subroutine kipp_colnames(hdrfile, ncols, names, colunits)
       !! Read every column name and optional unit of a `.kipp` sidecar header, in column order.
       !!
-      !! The header is read a second time, after `parse_kipp_header`.
-      !! The unit is the third word of a column line ("Header file", docs/kippfiles.md).
-      !! Columns without a name line are blank.
-      !! The readers then pick the non-structural columns to offer as colour fields.
+      !! Second read of header, after `parse_kipp_header`; unit is third word of a column line
+      !! ("Header file", docs/kippfiles.md), columns w/o a name line are blank.
       ! Arguments
       character(len=*), intent(in) :: hdrfile
-         !! Path of the sidecar header.
+         !! Path of sidecar header.
       integer(int32), intent(out) :: ncols
-         !! Number of columns, from the `ncols` line, or 512 when the line is missing.
+         !! Number of columns, from `ncols` line, or 512 if missing.
       character(len=32), allocatable, intent(out) :: names(:)
          !! Name of each column, blank if unnamed.
       character(len=32), allocatable, intent(out) :: colunits(:)
-         !! Unit of each column, blank if none is stated.
+         !! Unit of each column, blank if none stated.
       integer(int32), parameter :: MAXC = 512
       integer(int32) :: iunit, iostat, idx
       character(len=256) :: line, key, nm
@@ -639,9 +620,9 @@ contains
    end subroutine kipp_colnames
 
    pure function third_word(line) result(w)
-      !! Return the third blank-separated word of a header line, blank if none.
+      !! Return third blank-separated word of header line, blank if none.
       !!
-      !! The unit is not read list-directed, which would end it at a `/`.
+      !! Not read list-directed, which would end unit at a `/`.
       ! Arguments
       character(len=*), intent(in) :: line
          !! Header line.
@@ -661,24 +642,23 @@ contains
    end function third_word
 
    subroutine kipp_axis_unit(col, tok, dm, def, fac, unit)
-      !! Find the cgs factor of a `.kipp` age, time step, mass or radius column.
+      !! Find cgs factor of a `.kipp` age, time step, mass or radius column.
       !!
-      !! The factor is `def` when the header gives no unit.
-      !! Otherwise it is that of the stated unit, which must be of dimension `dm`.
-      !! Any other unit stops the load with an error that lists the allowed units.
+      !! `def` when header gives no unit, else stated unit's factor, which must have dimension `dm`.
+      !! Any other unit stops load w/ error listing allowed units.
       ! Arguments
       character(len=*), intent(in) :: col
          !! Column name, for the error message.
       character(len=*), intent(in) :: tok
          !! Unit the header states, blank if none.
       integer(int32), intent(in) :: dm
-         !! Dimension code of the column, a `units` `DIM_` constant.
+         !! Dimension code of column, a `units` `DIM_` constant.
       real(real64), intent(in) :: def
-         !! Factor of the unit the column name implies.
+         !! Factor of unit column name implies.
       real(real64), intent(out) :: fac
          !! Factor to cgs.
       character(len=*), intent(out) :: unit
-         !! `UNAME` entry of the stated unit, blank if none.
+         !! `UNAME` entry of stated unit, blank if none.
       character(len=64) :: allowed
       integer(int32) :: k
       fac = def; unit = ''
@@ -699,9 +679,9 @@ contains
    end subroutine kipp_axis_unit
 
    subroutine register_kipp_fields(names, colunits, ncols, fld_col, nf)
-      !! Register every named non-structural column of a `.kipp` stream as a colour field.
+      !! Register every named non-structural `.kipp` column as a colour field.
       !!
-      !! This sets the names, units and reset ranges of the shared registry in convdata.f90.
+      !! Sets names, units and reset ranges of shared registry in convdata.f90.
       ! Arguments
       character(len=*), intent(in) :: names(:)
          !! Name of each column, blank if unnamed.
@@ -735,10 +715,10 @@ contains
    end subroutine register_kipp_fields
 
    pure function is_structural_kipp(name) result(yes)
-      !! Test whether a `.kipp` column is structural, so it is not offered as a colour field.
+      !! Test whether `.kipp` column is structural, so not offered as colour field.
       !!
-      !! Structural columns are the accepted names of the required columns ("Required columns", docs/kippfiles.md),
-      !! and `mlt_mixing_type`.
+      !! Structural: accepted names of required columns ("Required columns", docs/kippfiles.md) and
+      !! `mlt_mixing_type`.
       ! Arguments
       character(len=*), intent(in) :: name
          !! Column name.
@@ -757,11 +737,10 @@ contains
 
    subroutine flush_kipp(recs, ndata, ncap, model, nz, tsec, dtsec, &
                          am, ar, amt, ae, ifirst, ilast)
-      !! Append the record of one model's accumulated cells to `recs`.
+      !! Append record of one model's accumulated cells to `recs`.
       !!
-      !! The cells are reversed from surface to centre, as read, to centre to surface.
-      !! `recs` is extended by the factor `GROW_FAC` when it is full.
-      !! A model out of range or with no cells produces nothing.
+      !! Cells reversed from surface-to-centre (as read) to centre-to-surface; `recs` grows by
+      !! `GROW_FAC` when full; out-of-range or empty models produce nothing.
       ! Arguments
       type(convtype), allocatable, intent(inout) :: recs(:)
          !! Records built so far, in stream order.
@@ -821,11 +800,10 @@ contains
    end subroutine flush_kipp
 
    subroutine build_kipp_record(cnv, model, nz, tsec, dtsec, xm, rn, mt, eps)
-      !! Build the record of one `.kipp` model.
+      !! Build record of one `.kipp` model.
       !!
-      !! Age, mass and radius arrive already in cgs (s, g, cm).
-      !! The energy column is net (nuclear minus neutrino).
-      !! It drives the `nuc` layer with both signs, while the `neu` layer stays empty.
+      !! Age, mass and radius arrive in cgs (s, g, cm). Energy column is net (nuclear minus
+      !! neutrino), driving `nuc` layer w/ both signs; `neu` layer stays empty.
       ! Arguments
       type(convtype), intent(out) :: cnv
          !! Record to build.
@@ -884,7 +862,7 @@ contains
    end subroutine build_kipp_record
 
    subroutine grow_accum(am, ar, ae, amt, zcap)
-      !! Double the cell accumulation buffers of `loadkipp`, keeping their contents.
+      !! Double cell accumulation buffers of `loadkipp`, keeping contents.
       ! Arguments
       real(real64), allocatable, intent(inout) :: am(:)
          !! Mass coordinate of each cell.
@@ -909,16 +887,15 @@ contains
    end subroutine grow_accum
 
    subroutine find_kipp_header(path, hdrfile)
-      !! Locate the sidecar header of a `.kipp` file ("Header file", docs/kippfiles.md).
+      !! Locate sidecar header of `.kipp` file ("Header file", docs/kippfiles.md).
       !!
-      !! `<path>.hdr` next to the data file is tried first, then `<basename>.hdr` in the working directory.
-      !! The second is skipped when the data file already lives there, so the same spot is not checked twice.
-      !! A missing header stops the load with an error.
+      !! Tries `<path>.hdr` next to data file, then `<basename>.hdr` in working directory (skipped
+      !! if data file is there). Missing header stops load w/ error.
       ! Arguments
       character(len=*), intent(in) :: path
-         !! Path of the `.kipp` file.
+         !! Path of `.kipp` file.
       character(len=*), intent(out) :: hdrfile
-         !! Path of the header.
+         !! Path of header.
       integer(int32) :: slash
       logical :: ex
 
@@ -938,31 +915,30 @@ contains
 
    subroutine parse_kipp_header(hdrfile, ncols, c_model, c_age, c_dt, &
                                 c_mass, c_radius, c_mix, c_eps)
-      !! Read `ncols` and the columns of the required roles from a `.kipp` sidecar header.
+      !! Read `ncols` and required-role columns from `.kipp` sidecar header.
       !!
-      !! The first word of each line decides its use ("Header file", docs/kippfiles.md).
-      !! An `ncols N` line gives the row width, and `<index> <name>` lines name the columns.
-      !! `dtype` and `columns` lines are ignored.
-      !! A missing `ncols` or required column stops the load with an error.
+      !! First word of each line decides its use ("Header file", docs/kippfiles.md): `ncols N` gives
+      !! row width, `<index> <name>` names a column, `dtype` and `columns` ignored. Missing `ncols`
+      !! or required column stops load w/ error.
       ! Arguments
       character(len=*), intent(in) :: hdrfile
-         !! Path of the sidecar header.
+         !! Path of sidecar header.
       integer(int32), intent(out) :: ncols
          !! Number of values per cell.
       integer(int32), intent(out) :: c_model
-         !! Column of the model number.
+         !! Column of model number.
       integer(int32), intent(out) :: c_age
-         !! Column of the age.
+         !! Column of age.
       integer(int32), intent(out) :: c_dt
-         !! Column of the time step, 0 when absent.
+         !! Column of time step, 0 if absent.
       integer(int32), intent(out) :: c_mass
-         !! Column of the mass coordinate.
+         !! Column of mass coordinate.
       integer(int32), intent(out) :: c_radius
-         !! Column of the radius coordinate.
+         !! Column of radius coordinate.
       integer(int32), intent(out) :: c_mix
-         !! Column of the mixing type.
+         !! Column of mixing type.
       integer(int32), intent(out) :: c_eps
-         !! Column of the energy rate.
+         !! Column of energy rate.
       integer(int32) :: iunit, iostat, idx
       character(len=256) :: line, key, name
 
@@ -1006,28 +982,28 @@ contains
 
    subroutine assign_kipp_col(name, idx, c_model, c_age, c_dt, &
                               c_mass, c_radius, c_mix, c_eps)
-      !! Assign a header column to its role by its accepted names ("Required columns", docs/kippfiles.md).
+      !! Assign header column to its role by accepted names ("Required columns", docs/kippfiles.md).
       !!
-      !! Unknown names are ignored, so extra columns in the stream are skipped.
+      !! Ignores unknown names, so extra stream columns are skipped.
       ! Arguments
       character(len=*), intent(in) :: name
          !! Column name.
       integer(int32), intent(in) :: idx
          !! Column index, from 1.
       integer(int32), intent(inout) :: c_model
-         !! Column of the model number.
+         !! Column of model number.
       integer(int32), intent(inout) :: c_age
-         !! Column of the age.
+         !! Column of age.
       integer(int32), intent(inout) :: c_dt
-         !! Column of the time step.
+         !! Column of time step.
       integer(int32), intent(inout) :: c_mass
-         !! Column of the mass coordinate.
+         !! Column of mass coordinate.
       integer(int32), intent(inout) :: c_radius
-         !! Column of the radius coordinate.
+         !! Column of radius coordinate.
       integer(int32), intent(inout) :: c_mix
-         !! Column of the mixing type.
+         !! Column of mixing type.
       integer(int32), intent(inout) :: c_eps
-         !! Column of the energy rate.
+         !! Column of energy rate.
       select case (trim(name))
       case ('model_number', 'model'); c_model = idx
       case ('star_age_yr', 'star_age', 'age_yr'); c_age = idx
@@ -1056,13 +1032,12 @@ contains
    subroutine read_profile(dirname, pnum, cnv, fld_col, nf, rf)
       !! Parse `profile<pnum>.data` into one record.
       !!
-      !! The header must hold `model_number`, `num_zones`, `star_age` and `star_mass`.
-      !! The body must hold `mass`, `logR`, `mixing_type`, `eps_nuc` and `eps_nuc_neu_total`.
-      !! `eps_nuc` drives the `nuc` layer and `eps_nuc_neu_total` the `neu` layer.
-      !! The raw colour-field columns are collected into `rf`, centre to surface, for the caller to bin.
+      !! Header needs `model_number`, `num_zones`, `star_age`, `star_mass`; body needs `mass`,
+      !! `logR`, `mixing_type`, `eps_nuc` (drives `nuc` layer) and `eps_nuc_neu_total` (drives `neu`
+      !! layer). Raw colour-field columns go into `rf`, centre to surface, for caller to bin.
       ! Arguments
       character(len=*), intent(in) :: dirname
-         !! Path of the MESA run directory.
+         !! Path of MESA run directory.
       integer(int32), intent(in) :: pnum
          !! Profile number.
       integer(int32), intent(in) :: nf
@@ -1072,7 +1047,7 @@ contains
       type(convtype), intent(out) :: cnv
          !! Record to build.
       type(rawset), intent(out) :: rf
-         !! Colour-field values of the profile.
+         !! Colour-field values of profile.
 
       integer(int32) :: iunit, iostat, r, src, nz, k, f
       integer(int32) :: maxh, maxb
@@ -1206,14 +1181,14 @@ contains
    end subroutine read_profile
 
    subroutine build_mesa_zones(mt, nz, cnv)
-      !! Build the convection zones of a record from MESA mixing codes, mapped by `type_char`.
+      !! Build convection zones of record from MESA mixing codes, mapped by `type_char`.
       ! Arguments
       integer(int32), intent(in) :: mt(:)
          !! MESA mixing code of each cell, centre to surface.
       integer(int32), intent(in) :: nz
          !! Number of cells.
       type(convtype), intent(inout) :: cnv
-         !! Record that receives the zones.
+         !! Record receiving zones.
       integer(int32) :: k
       character(len=1), allocatable :: zones(:)
 
@@ -1226,7 +1201,7 @@ contains
    end subroutine build_mesa_zones
 
    pure function type_char(m) result(c)
-      !! Return the `ZONE_CHAR` type of a MESA mixing code ("Required columns", docs/kippfiles.md).
+      !! Return `ZONE_CHAR` type of MESA mixing code ("Required columns", docs/kippfiles.md).
       !!
       !! Unknown codes fall back to neutral.
       ! Arguments
@@ -1246,7 +1221,7 @@ contains
    end function type_char
 
    pure function col_index(line, name) result(idx)
-      !! Return the position, from 1, of the whitespace-separated token equal to `name`, or -1.
+      !! Return 1-based position of whitespace-separated token equal to `name`, or -1.
       ! Arguments
       character(len=*), intent(in) :: line
          !! Line of column names.
@@ -1277,7 +1252,7 @@ contains
    end function col_index
 
    function itoa(n) result(s)
-      !! Return the left-justified decimal string of a non-negative integer.
+      !! Return left-justified decimal string of non-negative integer.
       ! Arguments
       integer(int32), intent(in) :: n
          !! Integer to write.

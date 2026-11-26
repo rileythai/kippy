@@ -18,22 +18,11 @@
 
 ! bands.f90 -- band tracer and region outlines of the kipp renderer
 module bands
-   !! Traced bands and region outlines datatypes and methods.
+   !! Band tracer and region outlines.
    !!
-   !! - `tracer_t` and the `tracer_*` routines turn per-model intervals of
-   !!   one feature into bands, stored in a `bandset_t`.
-   !! - `seg_append`, `symdiff_append` and `build_chains` build the outline
-   !!   of a region as a `chainset_t` of polylines.
-   !!
-   !! Outline segments live on a "strip-edge" grid, where distinct
-   !! vertical/horizontal segments are defined via the edge coordinates
-   !! relative to vertical segmentation of model strips, i.e.:
-   !! `(e0, y0)-(e1, y1)`. `e0 == e1` is vertical at strip edge
-   !! `e0`. `y0 == y1 && e1 == e0 + 1` is horizontal across a time boundary.
-   !!
-   !! The cache builders fill the band and chainsets. These are later used
-   !! by the draw routines (draw.f90). `build_chains` reads `nmodels` from `kipp_state`.
-   !! This module holds no state.
+   !! Outline segments `(e0, y0)-(e1, y1)` live on a "strip-edge" grid, `e` indexing model strip
+   !! edges: `e0 == e1` is vertical at edge `e0`, `y0 == y1 && e1 == e0 + 1` horizontal across a
+   !! time boundary.
 
    use typedef, only: int32, real64
    use kipp_state, only: nmodels
@@ -48,45 +37,40 @@ module bands
    type :: tracer_t
       !! Greedy band tracer.
       !!
-      !! Turns per-model `(ylo, yhi)` intervals of one
-      !! feature (a convection type, or one energy contour level) into a
-      !! small number of bands spanning contiguous runs of models.
-      !! Closed bands are stored into a `bandset_t` cache.
+      !! Turns per-model `(ylo, yhi)` intervals of one feature (convection type or energy contour
+      !! level) into few bands over contiguous model runs; closed bands go to a `bandset_t`.
       integer(int32) :: maxbands = 0
          !! Number of band slots.
       integer(int32), allocatable :: i0(:), i1(:)
          !! First and last model of the band in each slot.
       logical, allocatable :: opn(:), ext(:)
-         !! The slot holds an open band; the band was extended this step.
+         !! Slot holds an open band; band was extended this step.
       real(real64), allocatable :: ylo(:, :), yhi(:, :)
          !! Lower and upper interface of each band, `(slot, model)`.
    end type tracer_t
 
    type :: band_t
-      !! One traced band in data coordinates.
+      !! Traced band in data coords.
       !!
-      !! This is a model range on x, cgs mass or radius interfaces on y.
-      !! Designed to be view-independent so zoom, pan and units
-      !! only change on transforms.
-      !! Bands are cached across renders so redraws only cost a polygon fill.
+      !! x: model range, y: cgs mass/radius interfaces. View-independent, so cached across renders.
       integer(int32) :: i0 = 0, i1 = 0
-         !! First and last model of the band.
+         !! First and last model of band.
       real(real64), allocatable :: ylo(:), yhi(:)
          !! Lower and upper interface in each model, `i1 - i0 + 1` entries.
    end type band_t
 
    type :: bandset_t
-      !! A growable list of bands.
+      !! Growable list of bands.
       integer(int32) :: nb = 0
          !! Number of bands stored.
       type(band_t), allocatable :: b(:)
-         !! The bands, `b(1:nb)`; extended with array doubling.
+         !! Bands, `b(1:nb)`; grows by array doubling.
    end type bandset_t
 
    type :: chain_t
-      !! One outline polyline along a region boundary.
+      !! Outline polyline along a region boundary.
       !!
-      !! In data coordinates: x is a strip-edge index into `xedge`, y a cgs mass or radius.
+      !! Data coords: x is strip-edge index into `xedge`, y cgs mass or radius.
       integer(int32) :: n = 0
          !! Number of points.
       integer(int32), allocatable :: ei(:)
@@ -96,11 +80,11 @@ module bands
    end type chain_t
 
    type :: chainset_t
-      !! A growable list of outline chains.
+      !! Growable list of outline chains.
       integer(int32) :: nc = 0
          !! Number of chains stored.
       type(chain_t), allocatable :: c(:)
-         !! The chains, `c(1:nc)`; extended with array doubling.
+         !! Chains, `c(1:nc)`; grows by array doubling.
    end type chainset_t
 
 contains
@@ -109,11 +93,10 @@ contains
    ! band tracer
 
    subroutine tracer_alloc(tr, maxbands, nm)
-      !! Allocate a tracer with `maxbands` band slots over `nm` models, all
-      !! slots closed.
+      !! Allocate tracer w/ `maxbands` band slots over `nm` models, all closed.
       ! Arguments
       type(tracer_t), intent(out) :: tr
-         !! The tracer.
+         !! Tracer.
       integer(int32), intent(in)  :: maxbands, nm
          !! Number of band slots; number of models.
       tr%maxbands = maxbands
@@ -124,33 +107,32 @@ contains
    end subroutine tracer_alloc
 
    subroutine tracer_dealloc(tr)
-      !! Free the band slots of a tracer.
+      !! Free tracer's band slots.
       ! Arguments
       type(tracer_t), intent(inout) :: tr
-         !! The tracer.
+         !! Tracer.
       deallocate (tr%i0, tr%i1, tr%opn, tr%ext, tr%ylo, tr%yhi)
       tr%maxbands = 0
    end subroutine tracer_dealloc
 
    subroutine tracer_reset(tr)
-      !! Begin a new feature: close out any leftover bands without emitting.
+      !! Begin new feature: close leftover bands without emitting.
       ! Arguments
       type(tracer_t), intent(inout) :: tr
-         !! The tracer.
+         !! Tracer.
       tr%opn = .false.
    end subroutine tracer_reset
 
    subroutine tracer_step(tr, bs, i, ivlo, ivhi, m)
-      !! Feed model `i`'s intervals (`ivlo`/`ivhi`, `m` of them, ascending
-      !! in y).
-      !! Each interval is matched to an open band from model `i - 1`
-      !! by overlap; unmatched intervals open new ones; bands with no
-      !! continuation are stored to `bs`.
+      !! Feed model `i`'s intervals (`ivlo`/`ivhi`, `m` of them, ascending in y).
+      !!
+      !! Matches each interval to an open band from model `i - 1` by overlap; unmatched intervals
+      !! open new bands; bands w/o continuation stored to `bs`.
       ! Arguments
       type(tracer_t), intent(inout) :: tr
-         !! The tracer.
+         !! Tracer.
       type(bandset_t), intent(inout) :: bs
-         !! Receives the bands closed at this model.
+         !! Receives bands closed at this model.
       integer(int32), intent(in)    :: i, m
          !! Model index; number of intervals.
       real(real64), intent(in)    :: ivlo(:), ivhi(:)
@@ -192,12 +174,12 @@ contains
    end subroutine tracer_step
 
    subroutine tracer_flush(tr, bs)
-      !! Store all bands still open at the final model.
+      !! Store all bands still open at final model.
       ! Arguments
       type(tracer_t), intent(inout) :: tr
-         !! The tracer.
+         !! Tracer.
       type(bandset_t), intent(inout) :: bs
-         !! Receives the stored bands.
+         !! Receives stored bands.
       integer(int32) :: b
       ! stored in slot order
       do b = 1, tr%maxbands
@@ -206,12 +188,12 @@ contains
    end subroutine tracer_flush
 
    subroutine tracer_close(tr, bs, b)
-      !! Store the band in slot `b` to `bs` and free the slot.
+      !! Store band in slot `b` to `bs` and free slot.
       ! Arguments
       type(tracer_t), intent(inout) :: tr
-         !! The tracer.
+         !! Tracer.
       type(bandset_t), intent(inout) :: bs
-         !! Receives the band.
+         !! Receives band.
       integer(int32), intent(in)    :: b
          !! Slot to close.
       call bandset_append(bs, tr%i0(b), tr%i1(b), &
@@ -226,18 +208,18 @@ contains
       !! Drop every band of a set.
       ! Arguments
       type(bandset_t), intent(inout) :: bs
-         !! The band set.
+         !! Band set.
       if (allocated(bs%b)) deallocate (bs%b)
       bs%nb = 0
    end subroutine bandset_clear
 
    subroutine bandset_append(bs, i0, i1, ylo, yhi)
-      !! Append one band (grow-by-doubling).
+      !! Append one band, growing by doubling.
       ! Arguments
       type(bandset_t), intent(inout) :: bs
-         !! The band set.
+         !! Band set.
       integer(int32), intent(in)    :: i0, i1
-         !! First and last model of the band.
+         !! First and last model of band.
       real(real64), intent(in)    :: ylo(:), yhi(:)
          !! Lower and upper interface in each model, `i1 - i0 + 1` entries.
       type(band_t), allocatable :: tmp(:)
@@ -260,7 +242,7 @@ contains
    ! region outlines
 
    subroutine seg_append(se0, se1, sy0, sy1, ns, e0, e1, y0, y1)
-      !! Append one outline segment (grow-by-doubling).
+      !! Append one outline segment, growing by doubling.
       ! Arguments
       integer(int32), allocatable, intent(inout) :: se0(:), se1(:)
          !! Strip edge of each segment's first and second end.
@@ -269,9 +251,9 @@ contains
       integer(int32), intent(inout) :: ns
          !! Number of segments, incremented.
       integer(int32), intent(in)    :: e0, e1
-         !! Strip edges of the new segment's ends.
+         !! Strip edges of new segment's ends.
       real(real64), intent(in)    :: y0, y1
-         !! y of the new segment's ends.
+         !! y of new segment's ends.
       ns = ns + 1
       call grow_i32(se0, ns); call grow_i32(se1, ns)
       call grow_r64(sy0, ns); call grow_r64(sy1, ns)
@@ -281,16 +263,15 @@ contains
 
    subroutine symdiff_append(alo, ahi, na, blo, bhi, nb, e, bp, &
                              se0, se1, sy0, sy1, ns)
-      !! Append the vertical outline segments at strip edge `e`.
+      !! Append vertical outline segments at strip edge `e`.
       !!
-      !! Spans of y covered by exactly one of the two adjacent models' interval
-      !! sets.
-      !! All values are exact copies of the `mbound` reals to give exact membership tests.
+      !! Spans of y covered by exactly one of the two adjacent models' interval sets. Values are
+      !! exact copies of `mbound` reals, so membership tests are exact.
       ! Arguments
       real(real64), intent(in)    :: alo(:), ahi(:), blo(:), bhi(:)
          !! Intervals of the models left (`a`) and right (`b`) of the edge.
       integer(int32), intent(in)    :: na, nb, e
-         !! Number of `a` intervals; number of `b` intervals; the strip edge.
+         !! Number of `a` intervals; number of `b` intervals; strip edge.
       real(real64), intent(inout) :: bp(:)
          !! Breakpoint scratch, at least `2*(na + nb)` long.
       integer(int32), allocatable, intent(inout) :: se0(:), se1(:)
@@ -357,13 +338,14 @@ contains
    end subroutine symdiff_append
 
    subroutine build_chains(cs, se0, se1, sy0, sy1, ns)
-      !! Link the outline segments into polyline chains by walking shared
-      !! endpoints (exact equality; see `symdiff_append`).
-      !! Where more than two segments meet, the walker picks any
-      !! continuation: every segment is drawn exactly once either way.
+      !! Link outline segments into polyline chains by walking shared endpoints.
+      !!
+      !! Endpoints match by exact equality (see `symdiff_append`); where more than two segments
+      !! meet, any continuation is picked, each segment drawn exactly once either way. Reads
+      !! `nmodels` from kipp_state.f90.
       ! Arguments
       type(chainset_t), intent(inout) :: cs
-         !! Receives the chains.
+         !! Receives chains.
       integer(int32), intent(in) :: ns
          !! Number of segments.
       integer(int32), intent(in) :: se0(:), se1(:)
@@ -419,7 +401,7 @@ contains
    contains
 
       subroutine chain_extend()
-         !! Extend the chain from its tail while an unused segment connects.
+         !! Extend chain from its tail while an unused segment connects.
          integer(int32) :: et, kk, s2
          real(real64) :: yt
          logical :: found
@@ -447,7 +429,7 @@ contains
    end subroutine build_chains
 
    subroutine chain_push(cei, cy, cn, e, y)
-      !! Append one point to a growable chain.
+      !! Append one point to growable chain.
       ! Arguments
       integer(int32), allocatable, intent(inout) :: cei(:)
          !! Strip edge of each point.
@@ -456,9 +438,9 @@ contains
       integer(int32), intent(inout) :: cn
          !! Number of points, incremented.
       integer(int32), intent(in) :: e
-         !! Strip edge of the new point.
+         !! Strip edge of new point.
       real(real64), intent(in) :: y
-         !! y of the new point.
+         !! y of new point.
       cn = cn + 1
       call grow_i32(cei, cn)
       call grow_r64(cy, cn)
@@ -469,17 +451,18 @@ contains
       !! Drop every chain of a set.
       ! Arguments
       type(chainset_t), intent(inout) :: cs
-         !! The chain set.
+         !! Chain set.
       if (allocated(cs%c)) deallocate (cs%c)
       cs%nc = 0
    end subroutine chainset_clear
 
    subroutine chainset_append(cs, cei, cy, cn)
-      !! Store one chain (grow-by-doubling, like `bandset_append`). A chain
-      !! of fewer than two points is dropped.
+      !! Store one chain, growing by doubling like `bandset_append`.
+      !!
+      !! Chains of fewer than two points are dropped.
       ! Arguments
       type(chainset_t), intent(inout) :: cs
-         !! The chain set.
+         !! Chain set.
       integer(int32), intent(in) :: cei(:), cn
          !! Strip edge of each point; number of points.
       real(real64), intent(in) :: cy(:)
@@ -504,11 +487,12 @@ contains
    ! growable arrays
 
    subroutine grow_i32(a, need)
-      !! Make room for `need` entries, keeping the contents: the capacity
-      !! doubles when needed, and a new array starts at `max(need, 64)`.
+      !! Make room for `need` entries, keeping contents.
+      !!
+      !! Capacity doubles when needed; new array starts at `max(need, 64)`.
       ! Arguments
       integer(int32), allocatable, intent(inout) :: a(:)
-         !! The array.
+         !! Array.
       integer(int32), intent(in) :: need
          !! Number of entries needed.
       integer(int32), allocatable :: tmp(:)
@@ -528,7 +512,7 @@ contains
       !! Real counterpart of `grow_i32`.
       ! Arguments
       real(real64), allocatable, intent(inout) :: a(:)
-         !! The array.
+         !! Array.
       integer(int32), intent(in) :: need
          !! Number of entries needed.
       real(real64), allocatable :: tmp(:)

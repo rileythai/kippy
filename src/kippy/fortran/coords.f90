@@ -20,25 +20,9 @@
 module coords
    !! Model axes and world-coordinate transforms.
    !!
-   !! - `build_axes` rebuilds `xval`, `xedge` and `ystar` of kipp_state.f90.
-   !! - `kipp_autoscale` sets the auto view limits from them.
-   !! - `set_time_unit` switches the time unit, keeping the view.
-   !! - `xtrans`, `ytrans` and `ytrans2` map data to giza world coordinates.
-   !!   `inv_x` and `inv_y` map world coordinates back.
-   !! - `mbound` and `coord_at` give the mass or radius of a model's
-   !!   convection boundary or coordinate index.
-   !! - `bisect_le` finds the model strip that holds an x value.
-   !!
-   !! "Display units" are the units of the view limits in `st`:
-   !! `xval` units on x, `st%munit` or `st%runit` on y.
-   !! "World coordinates" are giza window coordinates.
-   !! A linear axis gives display units, shifted by `xoff` on x.
-   !! A logarithmic axis gives their log10.
-   !!
-   !! draw.f90 uses the transforms and sets `xoff` on each render.
-   !! cursor.f90 uses them for the cursor keys and `print_cell`.
-   !! kipp.f90 rebuilds the axes on load and REPL changes.
-   !! This module holds only `xoff`.
+   !! "Display units": units of `st` view limits, `xval` units on x, `st%munit` or `st%runit` on y.
+   !! "World coords": giza window coords, display units (minus `xoff` on x) on linear axes, their
+   !! log10 on log axes.
 
    use typedef, only: int32, real64
    use convdata, only: data
@@ -52,19 +36,20 @@ module coords
              inv_x, inv_y, mbound, coord_at, bisect_le
 
    real(real64), parameter :: LOGMIN = 1.d-99
-      !! Floor applied before a log10 so zero and negative values stay finite.
+      !! Floor applied before log10 so zero and negative values stay finite.
 
    real(real64) :: xoff = 0.d0
-      !! Time offset subtracted from linear x world coordinates, in `st%tunit`.
-      !! Set on each render by `draw_scene`, with its label.
+      !! Time offset subtracted from linear x world coords, in `st%tunit`.
+      !!
+      !! Set w/ its label on each render by `draw_scene`.
 
 contains
 
    subroutine build_axes()
-      !! Build the per-model x coordinate, strip edges and outer boundary.
+      !! Build per-model x coordinate, strip edges and outer boundary.
       !!
-      !! `xval`, `xedge` and `ystar` are rebuilt from `convdata%data` to
-      !! follow `st%xaxis`, `st%tunit` and `st%yaxis`.
+      !! Rebuilds `xval`, `xedge`, `ystar` from `convdata%data` per `st%xaxis`, `st%tunit`,
+      !! `st%yaxis`.
       integer(int32) :: i
       if (allocated(xval)) deallocate (xval)
       if (allocated(xedge)) deallocate (xedge)
@@ -91,12 +76,10 @@ contains
    end subroutine build_axes
 
    subroutine kipp_autoscale()
-      !! Reset the auto view limits from the data.
+      !! Reset auto view limits from data.
       !!
-      !! Only the axes flagged by `st%xauto` and `st%yauto` are reset.
-      !! x spans all model strips.
-      !! y spans the centre to the largest outer boundary, or four decades
-      !! below it on a logarithmic axis.
+      !! Only axes flagged by `st%xauto`, `st%yauto`. x spans all model strips; y spans centre to
+      !! largest outer boundary, or four decades below it on log axis.
       if (st%xauto) then
          st%xmin = xedge(1)
          st%xmax = xedge(nmodels + 1)
@@ -109,13 +92,12 @@ contains
    end subroutine kipp_autoscale
 
    subroutine set_time_unit(k)
-      !! Switch the time unit to `UNAME(k)`, keeping the view.
+      !! Switch time unit to `UNAME(k)`, keeping view.
       !!
-      !! On a time axis the x view limits are rescaled to the new unit.
-      !! The model axes are rebuilt.
+      !! Rescales x view limits on a time axis, rebuilds model axes.
       ! Arguments
       integer(int32), intent(in) :: k
-         !! Unit index into the tables of units.f90.
+         !! Unit index into units.f90 tables.
       if (UNAME(k) == st%tunit) return
       if (st%xaxis == 'time') then
          st%xmin = st%xmin*UFAC(unit_id(st%tunit))/UFAC(k)
@@ -126,9 +108,9 @@ contains
    end subroutine set_time_unit
 
    pure function yscale() result(s)
-      !! Return the cgs size of one y display unit.
+      !! Return cgs size of one y display unit.
       !!
-      !! The unit is `st%runit` on the radius axis, else `st%munit`.
+      !! `st%runit` on radius axis, else `st%munit`.
       real(real64) :: s
       if (st%yaxis == 'radius') then
          s = UFAC(unit_id(st%runit))
@@ -138,10 +120,9 @@ contains
    end function yscale
 
    pure function xtrans(x) result(p)
-      !! Map an x value to world coordinates.
+      !! Map x value to world coords.
       !!
-      !! A logarithmic axis takes the log10, floored at `LOGMIN`.
-      !! A linear axis subtracts `xoff`.
+      !! Log axis: log10, floored at `LOGMIN`. Linear axis: subtracts `xoff`.
       ! Arguments
       real(real64), intent(in) :: x
          !! x value in `xval` units: time in `st%tunit`, or model number.
@@ -154,10 +135,9 @@ contains
    end function xtrans
 
    pure function ytrans(c) result(p)
-      !! Map a cgs mass or radius to world coordinates.
+      !! Map cgs mass or radius to world coords.
       !!
-      !! The value is scaled to the display unit, then a logarithmic axis
-      !! takes the log10.
+      !! Scaled to display unit, then log10 on log axis.
       ! Arguments
       real(real64), intent(in) :: c
          !! Mass (g) or radius (cm).
@@ -167,10 +147,9 @@ contains
    end function ytrans
 
    pure function ytrans2(v) result(p)
-      !! Map a y value in display units to world coordinates.
+      !! Map y value in display units to world coords.
       !!
-      !! Used for the view limits, which are already scaled, so only the
-      !! log10 of a logarithmic axis applies.
+      !! For already-scaled view limits, so only log axis's log10 applies.
       ! Arguments
       real(real64), intent(in) :: v
          !! y value in `st%munit` or `st%runit`.
@@ -183,10 +162,9 @@ contains
    end function ytrans2
 
    pure function inv_x(w) result(v)
-      !! Map a world x coordinate back to display units.
+      !! Map world x coord back to display units.
       !!
-      !! Inverse of `xtrans`.
-      !! The exponent is clamped to +-300 to stay inside the real64 range.
+      !! Inverse of `xtrans`; exponent clamped to +-300 to stay in real64 range.
       ! Arguments
       real(real64), intent(in) :: w
          !! World x coordinate.
@@ -199,10 +177,9 @@ contains
    end function inv_x
 
    pure function inv_y(w) result(v)
-      !! Map a world y coordinate back to display units.
+      !! Map world y coord back to display units.
       !!
-      !! Inverse of `ytrans2`.
-      !! The exponent is clamped to +-300 to stay inside the real64 range.
+      !! Inverse of `ytrans2`; exponent clamped to +-300 to stay in real64 range.
       ! Arguments
       real(real64), intent(in) :: w
          !! World y coordinate.
@@ -215,13 +192,10 @@ contains
    end function inv_y
 
    pure function mbound(i, k) result(c)
-      !! Return the cgs mass or radius of convection boundary `k` of model `i`.
+      !! Return cgs mass or radius of convection boundary `k` of model `i`.
       !!
-      !! Boundary 0 is the inner edge of the grid.
-      !! Boundary `k > 0` lies midway between coordinates `iconv(k)` and
-      !! `iconv(k) + 1`.
-      !! On the radius axis the midpoint is taken in r^3, so it halves the
-      !! shell volume.
+      !! Boundary 0 is inner grid edge; `k > 0` lies midway between coords `iconv(k)` and
+      !! `iconv(k) + 1`, taken in r^3 on radius axis so it halves shell volume.
       ! Arguments
       integer(int32), intent(in) :: i, k
          !! Model index; boundary index, `0..nconv`.
@@ -247,9 +221,9 @@ contains
    end function mbound
 
    pure function coord_at(i, ic) result(c)
-      !! Return the cgs mass or radius at coordinate index `ic` of model `i`.
+      !! Return cgs mass or radius at coordinate index `ic` of model `i`.
       !!
-      !! `ic` is the 1-based KEPLER coordinate index, clamped to `1..ncoord`.
+      !! `ic` is 1-based KEPLER coordinate index, clamped to `1..ncoord`.
       ! Arguments
       integer(int32), intent(in) :: i, ic
          !! Model index; coordinate index.
@@ -264,9 +238,9 @@ contains
    end function coord_at
 
    pure function bisect_le(arr, v) result(k)
-      !! Return the largest `k` with `arr(k) <= v`, or 0 when `v < arr(1)`.
+      !! Return largest `k` w/ `arr(k) <= v`, or 0 if `v < arr(1)`.
       !!
-      !! Found by bisection, so `arr` must be ascending.
+      !! Bisection, so `arr` must be ascending.
       ! Arguments
       real(real64), intent(in) :: arr(:), v
          !! Ascending array; value to place.

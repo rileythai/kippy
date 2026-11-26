@@ -20,10 +20,9 @@
 program convview
    !! Interactive Kippenhahn viewer.
    !!
-   !! Usage: `convview [path]`, with `convdata.cnv` as the default path (docs/usage.md).
-   !! Commands are read from stdin and the plot is rendered again after each (docs/commands.md).
-   !! The plot shows in an interactive `/xw` window when `$DISPLAY` is set.
-   !! Without a display, PNG snapshots are written instead.
+   !! Usage: `convview [path]`, default `convdata.cnv` (docs/usage.md). Reads commands from stdin,
+   !! re-renders after each (docs/commands.md): `/xw` window when `$DISPLAY` is set, else PNG
+   !! snapshots.
 
    use kipp
    implicit none (type, external)
@@ -184,14 +183,14 @@ program convview
 contains
 
    subroutine tokens(s, t0, t1, t2, t3)
-      !! Split a line into up to four whitespace-separated tokens.
+      !! Split line into up to four whitespace-separated tokens.
       !!
-      !! Missing tokens are blank, and tokens past the fourth are dropped.
+      !! Missing tokens blank, tokens past fourth dropped.
       ! Arguments
       character(len=*), intent(in)  :: s
          !! Input line.
       character(len=*), intent(out) :: t0
-         !! First token, the command.
+         !! First token (command).
       character(len=*), intent(out) :: t1
          !! Second token.
       character(len=*), intent(out) :: t2
@@ -208,7 +207,7 @@ contains
    end subroutine tokens
 
    subroutine pop(buf, tok)
-      !! Remove the first whitespace-separated token from `buf`.
+      !! Remove first whitespace-separated token from `buf`.
       ! Arguments
       character(len=*), intent(inout) :: buf
          !! Text left to split.
@@ -225,9 +224,9 @@ contains
    end subroutine pop
 
    logical function rd2(a, b, x, y)
-      !! Read a number from each of two tokens.
+      !! Read one number from each of two tokens.
       !!
-      !! The result is false, with `need two numbers` printed, when either does not parse.
+      !! False, w/ `need two numbers` printed, if either fails to parse.
       ! Arguments
       character(len=*), intent(in) :: a
          !! First token.

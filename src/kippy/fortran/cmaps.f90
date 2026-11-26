@@ -18,17 +18,12 @@
 
 ! cmaps.f90 -- colour-field colormaps
 module cmaps
-   !! Colormaps of the colour fields.
+   !! Colormaps of colour fields.
    !!
-   !! `teal`, `blue` and `gray` are analytic ramps.
-   !! The rest are matplotlib 3.10.8 colormaps sampled at `NANCHOR` evenly spaced "anchors".
-   !! The anchors are `cmap(linspace(0, 1, 33))` rounded to 4 decimals.
-   !! They are interpolated linearly, which stays within 6/255 of matplotlib.
-   !! `Greys` to `Oranges` and `RdBu` are ColorBrewer schemes (Cynthia Brewer, Apache-style licence).
-   !! `coolwarm` is Kenneth Moreland's diverging map.
-   !!
-   !! axes.f90 wraps `cmap_rgb` in `colormap`, which applies the `_r` reversal.
-   !! kipp.f90 lists and selects the maps by `CMAP_NAMES`.
+   !! `teal`, `blue`, `gray` analytic; rest sampled from matplotlib 3.10.8 at `NANCHOR` anchors
+   !! (`cmap(linspace(0, 1, 33))`, 4 decimals), linearly interpolated to within 6/255. `Greys` to
+   !! `Oranges` and `RdBu` are ColorBrewer (Cynthia Brewer, Apache-style licence), `coolwarm` is
+   !! Kenneth Moreland's diverging map.
 
    use typedef, only: int32, real64
 
@@ -43,7 +38,7 @@ module cmaps
       'teal', 'blue', 'gray', 'viridis', 'plasma', 'inferno', &
       'magma', 'cividis', 'Greys', 'Blues', 'Greens', 'Reds', &
       'Purples', 'Oranges', 'coolwarm', 'RdBu', 'turbo']
-      !! Colormap names as the `cmap` command takes them (docs/commands.md).
+      !! Colormap names as `cmap` command takes them (docs/commands.md).
 
    real(real64), parameter :: VIRIDIS(3, NANCHOR) = reshape([ &
       0.2670d0, 0.0049d0, 0.3294d0, 0.2770d0, 0.0503d0, 0.3757d0, 0.2823d0, 0.0950d0, 0.4173d0, &
@@ -246,15 +241,15 @@ module cmaps
 contains
 
    pure subroutine cmap_rgb(name, t, r, g, b)
-      !! Return the colour of colormap `name` at `t`.
+      !! Return colour of colormap `name` at `t`.
       !!
-      !! `t` is clamped to [0, 1].
-      !! Unknown names fall back to `teal`.
+      !! `t` clamped to [0, 1], unknown names fall back to `teal`. `_r` reversal is done by
+      !! `axes%colormap`, not here.
       ! Arguments
       character(len=*), intent(in) :: name
          !! Colormap name, a `CMAP_NAMES` entry.
       real(real64), intent(in) :: t
-         !! Position along the map, 0 at the low end and 1 at the high end.
+         !! Position along map, 0 at low end, 1 at high end.
       real(real64), intent(out) :: r
          !! Red, in [0, 1].
       real(real64), intent(out) :: g
@@ -304,12 +299,12 @@ contains
    end subroutine cmap_rgb
 
    pure subroutine interp(tab, x, r, g, b)
-      !! Interpolate the anchors of a sampled colormap linearly at `x`.
+      !! Interpolate sampled-colormap anchors linearly at `x`.
       ! Arguments
       real(real64), intent(in) :: tab(3, NANCHOR)
          !! Anchor colours, RGB in [0, 1].
       real(real64), intent(in) :: x
-         !! Position along the map, in [0, 1].
+         !! Position along map, in [0, 1].
       real(real64), intent(out) :: r
          !! Red, in [0, 1].
       real(real64), intent(out) :: g
