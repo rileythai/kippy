@@ -16,8 +16,7 @@ Refactor `kipp.f90` into documented modules on branch `refactor` (task 33), behi
 
 ## Waiting on the user
 
-- task 33: close it, or keep it open for the explicit-arguments pass.
-- task 35: the user moves `profiles_fixture/` to LFS with its inlist and MESA version; then add its `export-ignore` line.
+- task 33: kept open for the explicit-arguments pass (readability, heavy refactor; user, 2026-11-26).
 
 ## Live runs
 
@@ -25,4 +24,4 @@ Refactor `kipp.f90` into documented modules on branch `refactor` (task 33), behi
 
 ## Next action
 
-Settle task 33 with the user. The docs CI job has not yet run with the FORD step (runs on the next push). Checks after any Fortran change: `uv run tools/golden.py check .scratch/32/ref4 ~/projects/keppy/convdata.cnv seq.xxx profiles_fixture/profile.cnv profiles_fixture/profile.kipp profiles_fixture` (about 1 min) must print `golden check ok`, `mise run test` must pass, and `mise run doccheck src/kippy/fortran/*.f90` must pass (all 18 files pass). Rebuild with `mise run install`; `mise run smoke` for a quick check. `mise run docs:build` now runs FORD into `docs/fortran` first.
+Settle task 33 with the user. The docs CI job has not yet run with the FORD step (runs on the next push). Checks after any Fortran change: `uv run tools/golden.py check .scratch/32/ref6 ~/projects/keppy/convdata.cnv seq.xxx tests/profiles_fixture/profile.cnv tests/profiles_fixture/profile.kipp tests/profiles_fixture` (about 1 min) must print `golden check ok`, `mise run test` must pass, and `mise run doccheck src/kippy/fortran/*.f90` must pass (all 18 files pass). Rebuild with `mise run install`; `mise run smoke` for a quick check. `mise run docs:build` now runs FORD into `docs/fortran` first.
