@@ -52,16 +52,19 @@ module monload
    integer(int16), parameter :: MON_OVERSHOOT = 3
       !! `kcvtn` code of overshoot cell.
 
-   integer(int32), parameter :: MON_NFIELDS = 11
+   integer(int32), parameter :: MON_NFIELDS = 20
       !! Number of colour fields.
    real(real64), parameter :: LSUN = 3.851d33
-      !! Solar luminosity (erg/s).
+      !! Solar luminosity (erg/s), from MONASH `seqdump`.
+      !!
+      !! MONASH itself uses 3.8515d33, citing Guenther et al. 1992, ApJ 387, 372.
    character(len=32), parameter :: MON_FIELD_NAMES(MON_NFIELDS) = [ &
       character(len=32) :: &
       'Temperature', 'Density', 'Pressure', 'Luminosity', &
       'H_reaction_rate', 'He3_reaction_rate', 'He4_reaction_rate', &
       'C_reaction_rate', 'N_reaction_rate', 'O_reaction_rate', &
-      'Other_reaction_rate']
+      'Other_reaction_rate', 'Internal_energy', 'Convective_velocity', &
+      'X_H', 'X_He3', 'X_He4', 'X_C', 'X_N', 'X_O', 'X_Other']
       !! Colour-field names, in `rawset%v` column order.
 
    type :: rawset
@@ -133,7 +136,7 @@ contains
             if (ndata > ncap) call grow_models(recs, ncap, ndata - 1)
             call build_mon_record(recs(ndata), raw, ncurrent, npts, &
                                   time, tint, mass, ltc, lpc, omx, rhop, &
-                                  kcvtn, f, wd)
+                                  up, vconvp, kcvtn, f, w, wd)
          end block
       end do
 
@@ -180,7 +183,8 @@ contains
             if (ncurrent /= recs(m)%ncyc .or. &
                 npts /= recs(m)%ncoord) &
                error stop '[loadmon] file changed between passes'
-            call build_mon_fields(raw, npts, ltc, lpc, rhop, f, wd)
+            call build_mon_fields(raw, npts, ltc, lpc, rhop, up, vconvp, &
+                                  f, w, wd)
             recs(m)%nfld = MON_NFIELDS
             allocate (recs(m)%fld(2, MON_NFIELDS))
             do fld = 1, MON_NFIELDS
@@ -220,7 +224,7 @@ contains
    end subroutine grow_models
 
    subroutine build_mon_record(cnv, raw, model, nz, time, dt, mass, ltc, &
-                               lpc, omx, rhop, kcvtn, f, wd)
+                               lpc, omx, rhop, up, vconvp, kcvtn, f, w, wd)
       !! Build record of one MONASH model.
       !!
       !! Mass coord `mass * (1 - omx)^3`, centre to surface; radius is running sum of radius steps;
@@ -236,11 +240,11 @@ contains
       integer, intent(in) :: nz
          !! Number of cells.
       real(real64), intent(in) :: time
-         !! Age, stored as `timesec`.
+         !! Age (s), stored as `timesec`.
       real(real64), intent(in) :: dt
-         !! Time step, stored as `dt`.
+         !! Time step that reached this model (s), stored as `dt`.
       real(real64), intent(in) :: mass
-         !! Total mass.
+         !! Total mass (g).
       real(real64), intent(in) :: ltc
          !! Central temperature, `ln T`.
       real(real64), intent(in) :: lpc
@@ -249,12 +253,18 @@ contains
          !! Mass coordinate `omx` of each cell.
       real(real64), intent(in) :: rhop(:)
          !! Density of each cell.
+      real(real64), intent(in) :: up(:)
+         !! Internal energy per gram of each cell.
+      real, intent(in) :: vconvp(:)
+         !! Convective velocity of each cell.
+      integer(int16), intent(in) :: kcvtn(:)
+         !! Convection code of each cell.
       real(real64), intent(in) :: f(:, :)
          !! Steps across each cell.
          !!
          !! Rows: luminosity (Lsun), `ln T`, radius (Rsun), `ln P`.
-      integer(int16), intent(in) :: kcvtn(:)
-         !! Convection code of each cell.
+      real, intent(in) :: w(:, :)
+         !! Seven mass fractions of each cell.
       real, intent(in) :: wd(:, :)
          !! Seven reaction rates of each cell.
 
@@ -264,7 +274,7 @@ contains
       character(len=1), allocatable :: zones(:)
 
       allocate (xm(nz), rn(nz), eps(nz), zones(nz))
-      call build_mon_fields(raw, nz, ltc, lpc, rhop, f, wd)
+      call build_mon_fields(raw, nz, ltc, lpc, rhop, up, vconvp, f, w, wd)
 
       radius = 0.d0
       do j = 1, nz
@@ -328,7 +338,7 @@ contains
       deallocate (xm, rn, eps, zones)
    end subroutine build_mon_record
 
-   subroutine build_mon_fields(raw, nz, ltc, lpc, rhop, f, wd)
+   subroutine build_mon_fields(raw, nz, ltc, lpc, rhop, up, vconvp, f, w, wd)
       !! Fill colour-field values of one model, in `MON_FIELD_NAMES` order.
       !!
       !! Temperature, pressure and luminosity are running sums of their steps from centre.
@@ -343,10 +353,16 @@ contains
          !! Central pressure, `ln P`.
       real(real64), intent(in) :: rhop(:)
          !! Density of each cell.
+      real(real64), intent(in) :: up(:)
+         !! Internal energy per gram of each cell.
+      real, intent(in) :: vconvp(:)
+         !! Convective velocity of each cell.
       real(real64), intent(in) :: f(:, :)
          !! Steps across each cell.
          !!
          !! Rows: luminosity (Lsun), `ln T`, radius (Rsun), `ln P`.
+      real, intent(in) :: w(:, :)
+         !! Seven mass fractions of each cell.
       real, intent(in) :: wd(:, :)
          !! Seven reaction rates of each cell.
 
@@ -366,6 +382,9 @@ contains
          raw%v(j, 3) = exp(ln_pressure)
          raw%v(j, 4) = lum
          raw%v(j, 5:11) = real(wd(1:7, j), real64)
+         raw%v(j, 12) = up(j)
+         raw%v(j, 13) = real(vconvp(j), real64)
+         raw%v(j, 14:20) = real(w(1:7, j), real64)
       end do
    end subroutine build_mon_fields
 

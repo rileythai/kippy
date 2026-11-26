@@ -132,7 +132,7 @@ module convdata
           !! Number of bits set in `ladv`, length of advection arrays.
      integer(kind=int32) :: &
           levcnv
-          !! Record field `levcnv`, not described in docs/cnvfiles.md.
+          !! Other term specific to KEPLER, not important.
      integer(kind=int32) :: &
           minloss, mingain, minnucl, minnucg, minneul, minneug
           !! Level floors, as consecutive (gain, loss) pairs of `nuc`, `nuk` and `neu` layers.
@@ -175,7 +175,7 @@ module convdata
           !! Global energy totals and rates, luminosities, moment of inertia `angit`.
      real(kind=real64) :: &
           xmacc
-          !! Record field `xmacc`, not described in docs/cnvfiles.md.
+          !! Other term specific to KEPLER, not important.
      real(kind=real64) :: &
           tc,dc,pc,ec,sc,ye,ab, &
           et,sn,su,g1,g2,s1,s2
@@ -184,7 +184,7 @@ module convdata
           !! `convdump` prints `tc` and `dc`.
      real(kind=real64) :: &
           summ0,radius0,an
-          !! Record fields not described in docs/cnvfiles.md.
+          !! Other terms specific to KEPLER, not important.
           !!
           !! `convdump` prints `summ0`, which is not added to the mass coordinate.
 
@@ -200,7 +200,7 @@ module convdata
           !! Radius coordinate of each grid point (cm), centre to surface.
      real(kind=real64), dimension(:), allocatable :: &
           dmadv, dvadv
-          !! Advection arrays of length `nadv`, not described in docs/cnvfiles.md.
+          !! Advection arrays of length `nadv`, specific to KEPLER, not important.
 
      character(len=1), dimension(:), allocatable :: &
           yzip

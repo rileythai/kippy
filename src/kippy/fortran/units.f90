@@ -30,9 +30,9 @@ module units
    private
 
    real(real64), parameter, public :: SOLMASS = 1.9892d33
-      !! Solar mass (g).
+      !! Solar mass (g), as used in KEPLER.
    real(real64), parameter, public :: SOLRAD = 6.9599d10
-      !! Solar radius (cm).
+      !! Solar radius (cm), as used in KEPLER.
    real(real64), parameter, public :: YR = 31556952.d0
       !! Gregorian year (s).
 

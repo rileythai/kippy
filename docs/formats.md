@@ -18,7 +18,7 @@
 | KEPLER-style `.cnv` | Fallback after the other checks | Native `yzip` and `iconv` zone records | Native nuclear, neutrino, and related energy layers | No generic source-column fields |
 | Raw `.kipp` stream | Path ends with `.kipp` | The stream's mixing column | One eps column for net energy layer | Every named non-structural column in the `.hdr` sidecar |
 | MESA profiles directory | `<path>/profiles.index` exists | `mixing_type` | `eps_nuc`; `eps_nuc_neu_total` for neutrino layer | `logT`, `logRho`, `logL`, `luminosity`, `logP`, `pressure`, `opacity`, `entropy`, and `velocity`, when present |
-| MONASH `seq` | Basename begins with `seq.` or ends with `.seq` | `kcvtn` | Approximated epsnuc from `dL/dm` | Temperature, density, pressure, luminosity, and seven reaction rates |
+| MONASH `seq` | Basename begins with `seq.` or ends with `.seq` | `kcvtn` | Approximated epsnuc from `dL/dm` | Temperature, density, pressure, luminosity, internal energy, convective velocity, seven reaction rates and seven mass fractions |
 
 !!! note
     The MONASH stellar evolution code and KEPLER are both closed-source codes.
@@ -93,14 +93,45 @@ record per model. Mass coordinates are reconstructed from the mass coordinate `o
 `mass * (1 - omx)^3`; cells are ordered from centre to surface (inside-out).
 Convection zones come from the `kcvtn` flag.
 
+Each record holds, in order:
+
+| Field | Type | Count | Meaning |
+| --- | --- | --- | --- |
+| `ncurrent` | `i4` | 1 | Model number |
+| `time` | `f8` | 1 | Age (s) |
+| `tint` | `f8` | 1 | Time step that reached this model (s) |
+| `tintn` | `f8` | 1 | Next time step (s) |
+| `mass` | `f8` | 1 | Total mass (g) |
+| `lolsun` | `f8` | 1 | Surface luminosity (Lsun) |
+| `ltc`, `lpc` | `f8` | 2 | Central `ln T`, `ln P` |
+| `ltca`, `lpca` | `f8` | 2 | Central `ln T`, `ln P` of the previous model |
+| `npts` | `i4` | 1 | Number of cells |
+
+then, for each of the `npts` cells:
+
+| Field | Type | Count | Meaning |
+| --- | --- | --- | --- |
+| `omx` | `f8` | 1 | Mass coordinate, `m = mass * (1 - omx)^3` |
+| `dx` | `f4` | 1 | `omx` step to the next cell |
+| `kcvtn` | `i2` | 1 | Convection code |
+| `up` | `f8` | 1 | Internal energy per gram |
+| `rhop` | `f8` | 1 | Density |
+| `vconvp` | `f4` | 1 | Convective velocity |
+| `f`, `fa` | `f8` | 4 pairs | Steps across the cell of luminosity (Lsun), `ln T`, radius (Rsun) and `ln P`; `fa` for the previous model |
+| `w`, `wd` | `f4` | 7 pairs | Mass fractions and reaction rates of H, He3, He4, C, N, O and other |
+
+kippy reads every field but does not use `tintn`, `lolsun`, `ltca`, `lpca`, `dx` and `fa`.
+
 Because it does not save, we approximate the epsnuc layer from the luminosity change per mass shell,
 `dL/dm`. Note that this is __not__ a nuclear energy-generation rate because the
 luminosity difference will also include gravothermal terms.
 
 The registered colour fields are `Temperature`, `Density`, `Pressure`,
 `Luminosity`, `H_reaction_rate`, `He3_reaction_rate`, `He4_reaction_rate`,
-`C_reaction_rate`, `N_reaction_rate`, `O_reaction_rate`, and
-`Other_reaction_rate`. These names are __case-sensitive__.
+`C_reaction_rate`, `N_reaction_rate`, `O_reaction_rate`,
+`Other_reaction_rate`, `Internal_energy`, `Convective_velocity`, `X_H`,
+`X_He3`, `X_He4`, `X_C`, `X_N`, `X_O`, and `X_Other`. These names are
+__case-sensitive__.
 
 !!! note
     Like the `.kipp` reader, the MONASH  `.seq` reader uses one pass 
